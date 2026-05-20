@@ -63,13 +63,48 @@ export class ContextImpl<
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async runWorkflow<TIn, TOut, TSubBag extends Record<string, unknown>>(
-    _wf: WorkflowFn<TIn, TOut, TSubBag>,
-    _input: TIn,
+    wf: WorkflowFn<TIn, TOut, TSubBag>,
+    input: TIn,
   ): Promise<TOut> {
-    void _wf;
-    void _input;
-    throw new Error('not implemented');
+    const startedAt = Date.now();
+    const childTrace: Trace = {
+      workflowName: wf.name,
+      startedAt,
+      finishedAt: 0,
+      status: 'ok',
+      input,
+      steps: [],
+    };
+    const childCtx = new ContextImpl<TSubBag>(childTrace, this.moduleRef);
+    const step: TraceStep = {
+      kind: 'subworkflow',
+      name: wf.name,
+      input,
+      startedAt,
+      finishedAt: 0,
+      status: 'ok',
+      trace: childTrace,
+    };
+    this.trace.steps.push(step);
+    try {
+      const output = await wf(input, childCtx);
+      const finishedAt = Date.now();
+      childTrace.output = output;
+      childTrace.finishedAt = finishedAt;
+      step.output = output;
+      step.finishedAt = finishedAt;
+      return output;
+    } catch (cause) {
+      const finishedAt = Date.now();
+      const err = serializeError(cause);
+      childTrace.status = 'error';
+      childTrace.error = err;
+      childTrace.finishedAt = finishedAt;
+      step.status = 'error';
+      step.error = err;
+      step.finishedAt = finishedAt;
+      throw cause;
+    }
   }
 }

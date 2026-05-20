@@ -2,6 +2,7 @@ import { ModuleRef } from '@nestjs/core';
 import { ContextImpl } from './context';
 import type { Trace } from './trace';
 import { Node } from './node';
+import type { WorkflowFn } from './workflow';
 
 function makeTrace(): Trace {
   return {
@@ -118,5 +119,73 @@ describe('ContextImpl.run', () => {
     expect(step.startedAt).toBeGreaterThanOrEqual(before);
     expect(step.finishedAt).toBeGreaterThanOrEqual(step.startedAt);
     expect(step.finishedAt).toBeLessThanOrEqual(after);
+  });
+});
+
+describe('ContextImpl.runWorkflow', () => {
+  it('runs a sub-workflow with a fresh bag and nests its trace', async () => {
+    const get = jest.fn().mockReturnValue(new DoubleNode());
+    const { ctx, trace } = makeCtxWithRef({ get });
+
+    const sub: WorkflowFn<
+      { x: number },
+      number,
+      Record<string, never>
+    > = async (input, subCtx) => {
+      return subCtx.run(DoubleNode, { x: input.x });
+    };
+
+    const out = await ctx.runWorkflow(sub, { x: 5 });
+
+    expect(out).toBe(10);
+    expect(trace.steps).toHaveLength(1);
+    const step = trace.steps[0];
+    expect(step.kind).toBe('subworkflow');
+    if (step.kind !== 'subworkflow') throw new Error('unreachable');
+    expect(step.name).toBe('sub');
+    expect(step.input).toEqual({ x: 5 });
+    expect(step.output).toBe(10);
+    expect(step.status).toBe('ok');
+    expect(step.trace.status).toBe('ok');
+    expect(step.trace.steps).toHaveLength(1);
+    expect(step.trace.steps[0]).toMatchObject({
+      kind: 'node',
+      name: 'DoubleNode',
+    });
+  });
+
+  it('records error and re-throws when sub-workflow fails', async () => {
+    const { ctx, trace } = makeCtxWithRef({ get: jest.fn() });
+
+    // eslint-disable-next-line @typescript-eslint/require-await
+    const failing: WorkflowFn<void, void, Record<string, never>> = async () => {
+      throw new Error('child boom');
+    };
+
+    await expect(ctx.runWorkflow(failing, undefined)).rejects.toThrow(
+      'child boom',
+    );
+
+    const step = trace.steps[0];
+    expect(step.kind).toBe('subworkflow');
+    if (step.kind !== 'subworkflow') throw new Error('unreachable');
+    expect(step.status).toBe('error');
+    expect(step.error?.message).toBe('child boom');
+    expect(step.trace.status).toBe('error');
+    expect(step.trace.error?.message).toBe('child boom');
+  });
+
+  it('parent bag is independent of child bag', async () => {
+    type ParentBag = { shared: string };
+    const { ctx } = makeCtxWithRef<ParentBag>({ get: jest.fn() });
+    ctx.set('shared', 'parent-value');
+
+    const sub: WorkflowFn<void, string | undefined, ParentBag> =
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async (_input, subCtx) => subCtx.get('shared');
+
+    const out = await ctx.runWorkflow(sub, undefined);
+    expect(out).toBeUndefined();
+    expect(ctx.get('shared')).toBe('parent-value');
   });
 });
