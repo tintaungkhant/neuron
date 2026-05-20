@@ -15,10 +15,6 @@ function makeTrace(): Trace {
   };
 }
 
-function makeCtx<TBag extends Record<string, unknown>>() {
-  return new ContextImpl<TBag>(makeTrace(), {} as ModuleRef);
-}
-
 class DoubleNode extends Node<{ x: number }, number> {
   // eslint-disable-next-line @typescript-eslint/require-await
   async execute(input: { x: number }) {
@@ -33,44 +29,11 @@ class BoomNode extends Node<void, void> {
   }
 }
 
-function makeCtxWithRef<TBag extends Record<string, unknown>>(
-  moduleRef: Partial<ModuleRef>,
-) {
+function makeCtxWithRef(moduleRef: Partial<ModuleRef>) {
   const trace = makeTrace();
-  const ctx = new ContextImpl<TBag>(trace, moduleRef as ModuleRef);
+  const ctx = new ContextImpl(trace, moduleRef as ModuleRef);
   return { ctx, trace };
 }
-
-describe('ContextImpl — bag operations', () => {
-  it('set and get round-trip a value', () => {
-    type Bag = { user: { id: number } };
-    const ctx = makeCtx<Bag>();
-    ctx.set('user', { id: 1 });
-    expect(ctx.get('user')).toEqual({ id: 1 });
-  });
-
-  it('get returns undefined for missing key', () => {
-    type Bag = { user: string };
-    const ctx = makeCtx<Bag>();
-    expect(ctx.get('user')).toBeUndefined();
-  });
-
-  it('has reports key presence', () => {
-    type Bag = { user: string };
-    const ctx = makeCtx<Bag>();
-    expect(ctx.has('user')).toBe(false);
-    ctx.set('user', 'alice');
-    expect(ctx.has('user')).toBe(true);
-  });
-
-  it('overwrites an existing value', () => {
-    type Bag = { count: number };
-    const ctx = makeCtx<Bag>();
-    ctx.set('count', 1);
-    ctx.set('count', 2);
-    expect(ctx.get('count')).toBe(2);
-  });
-});
 
 describe('ContextImpl.run', () => {
   it('resolves the node via ModuleRef and returns its output', async () => {
@@ -123,15 +86,11 @@ describe('ContextImpl.run', () => {
 });
 
 describe('ContextImpl.runWorkflow', () => {
-  it('runs a sub-workflow with a fresh bag and nests its trace', async () => {
+  it('runs a sub-workflow and nests its trace', async () => {
     const get = jest.fn().mockReturnValue(new DoubleNode());
     const { ctx, trace } = makeCtxWithRef({ get });
 
-    const sub: WorkflowFn<
-      { x: number },
-      number,
-      Record<string, never>
-    > = async (input, subCtx) => {
+    const sub: WorkflowFn<{ x: number }, number> = async (input, subCtx) => {
       return subCtx.run(DoubleNode, { x: input.x });
     };
 
@@ -158,7 +117,7 @@ describe('ContextImpl.runWorkflow', () => {
     const { ctx, trace } = makeCtxWithRef({ get: jest.fn() });
 
     // eslint-disable-next-line @typescript-eslint/require-await
-    const failing: WorkflowFn<void, void, Record<string, never>> = async () => {
+    const failing: WorkflowFn<void, void> = async () => {
       throw new Error('child boom');
     };
 
@@ -173,19 +132,5 @@ describe('ContextImpl.runWorkflow', () => {
     expect(step.error?.message).toBe('child boom');
     expect(step.trace.status).toBe('error');
     expect(step.trace.error?.message).toBe('child boom');
-  });
-
-  it('parent bag is independent of child bag', async () => {
-    type ParentBag = { shared: string };
-    const { ctx } = makeCtxWithRef<ParentBag>({ get: jest.fn() });
-    ctx.set('shared', 'parent-value');
-
-    const sub: WorkflowFn<void, string | undefined, ParentBag> =
-      // eslint-disable-next-line @typescript-eslint/require-await
-      async (_input, subCtx) => subCtx.get('shared');
-
-    const out = await ctx.runWorkflow(sub, undefined);
-    expect(out).toBeUndefined();
-    expect(ctx.get('shared')).toBe('parent-value');
   });
 });

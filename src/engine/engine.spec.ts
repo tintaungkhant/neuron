@@ -37,14 +37,14 @@ describe('WorkflowEngine — happy path', () => {
   });
 
   it('runs a workflow, returns result + trace, records each node step', async () => {
-    type Bag = { greeting: string };
-    const wf: WorkflowFn<{ name: string }, string, Bag> =
-      async function greetWf(input, ctx) {
-        const g = await ctx.run(GreetNode, { name: input.name });
-        ctx.set('greeting', g);
-        const shouted = await ctx.run(ShoutNode, { text: g });
-        return shouted;
-      };
+    const wf: WorkflowFn<{ name: string }, string> = async function greetWf(
+      input,
+      ctx,
+    ) {
+      const g = await ctx.run(GreetNode, { name: input.name });
+      const shouted = await ctx.run(ShoutNode, { text: g });
+      return shouted;
+    };
 
     const { result, trace } = await engine.run(wf, { name: 'alice' });
 
@@ -205,21 +205,15 @@ describe('WorkflowEngine — sub-workflows', () => {
   });
 
   it('runs a sub-workflow through the engine and nests its trace', async () => {
-    const childWf: WorkflowFn<
-      { name: string },
-      string,
-      Record<string, never>
-    > = async function childWf(input, ctx) {
-      return ctx.run(GreetNode, { name: input.name });
-    };
+    const childWf: WorkflowFn<{ name: string }, string> =
+      async function childWf(input, ctx) {
+        return ctx.run(GreetNode, { name: input.name });
+      };
 
-    const parentWf: WorkflowFn<
-      { name: string },
-      string,
-      Record<string, never>
-    > = async function parentWf(input, ctx) {
-      return ctx.runWorkflow(childWf, { name: input.name });
-    };
+    const parentWf: WorkflowFn<{ name: string }, string> =
+      async function parentWf(input, ctx) {
+        return ctx.runWorkflow(childWf, { name: input.name });
+      };
 
     const { result, trace } = await engine.run(parentWf, { name: 'carol' });
 

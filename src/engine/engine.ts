@@ -9,8 +9,8 @@ import type { WorkflowFn } from './workflow';
 export class WorkflowEngine {
   constructor(private readonly moduleRef: ModuleRef) {}
 
-  async run<TIn, TOut, TBag extends Record<string, unknown>>(
-    wf: WorkflowFn<TIn, TOut, TBag>,
+  async run<TIn, TOut>(
+    wf: WorkflowFn<TIn, TOut>,
     input: TIn,
   ): Promise<{ result: TOut; trace: Trace }> {
     const trace: Trace = {
@@ -21,7 +21,7 @@ export class WorkflowEngine {
       input,
       steps: [],
     };
-    const ctx = new ContextImpl<TBag>(trace, this.moduleRef);
+    const ctx = new ContextImpl(trace, this.moduleRef);
     try {
       const result = await wf(input, ctx);
       trace.output = result;

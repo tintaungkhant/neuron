@@ -4,40 +4,17 @@ import type { Node } from './node';
 import type { WorkflowFn } from './workflow';
 import { serializeError, type Trace, type TraceStep } from './trace';
 
-export interface Context<TBag extends Record<string, unknown>> {
-  get<K extends keyof TBag>(key: K): TBag[K] | undefined;
-  set<K extends keyof TBag>(key: K, value: TBag[K]): void;
-  has<K extends keyof TBag>(key: K): boolean;
-
+export interface Context {
   run<I, O>(node: Type<Node<I, O>>, input: I): Promise<O>;
 
-  runWorkflow<TIn, TOut, TSubBag extends Record<string, unknown>>(
-    wf: WorkflowFn<TIn, TOut, TSubBag>,
-    input: TIn,
-  ): Promise<TOut>;
+  runWorkflow<TIn, TOut>(wf: WorkflowFn<TIn, TOut>, input: TIn): Promise<TOut>;
 }
 
-export class ContextImpl<
-  TBag extends Record<string, unknown>,
-> implements Context<TBag> {
-  private readonly bag = new Map<keyof TBag, TBag[keyof TBag]>();
-
+export class ContextImpl implements Context {
   constructor(
     private readonly trace: Trace,
     private readonly moduleRef: ModuleRef,
   ) {}
-
-  get<K extends keyof TBag>(key: K): TBag[K] | undefined {
-    return this.bag.get(key) as TBag[K] | undefined;
-  }
-
-  set<K extends keyof TBag>(key: K, value: TBag[K]): void {
-    this.bag.set(key, value);
-  }
-
-  has<K extends keyof TBag>(key: K): boolean {
-    return this.bag.has(key);
-  }
 
   async run<I, O>(node: Type<Node<I, O>>, input: I): Promise<O> {
     const instance = this.moduleRef.get(node, { strict: false });
@@ -63,8 +40,8 @@ export class ContextImpl<
     }
   }
 
-  async runWorkflow<TIn, TOut, TSubBag extends Record<string, unknown>>(
-    wf: WorkflowFn<TIn, TOut, TSubBag>,
+  async runWorkflow<TIn, TOut>(
+    wf: WorkflowFn<TIn, TOut>,
     input: TIn,
   ): Promise<TOut> {
     const startedAt = Date.now();
@@ -76,7 +53,7 @@ export class ContextImpl<
       input,
       steps: [],
     };
-    const childCtx = new ContextImpl<TSubBag>(childTrace, this.moduleRef);
+    const childCtx = new ContextImpl(childTrace, this.moduleRef);
     const step: TraceStep = {
       kind: 'subworkflow',
       name: wf.name,
