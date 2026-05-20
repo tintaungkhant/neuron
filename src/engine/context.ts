@@ -41,19 +41,20 @@ export class ContextImpl<
 
   // run() and runWorkflow() are stubbed here so the class satisfies
   // Context<TBag>. Real implementations land in Tasks 4 and 5.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/require-await
   async run<I, O>(_node: Type<Node<I, O>>, _input: I): Promise<O> {
     void this.trace;
     void this.moduleRef;
-    return await Promise.reject(new Error('not implemented'));
+    throw new Error('not implemented');
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async runWorkflow<TIn, TOut, TSubBag extends Record<string, unknown>>(
     _wf: WorkflowFn<TIn, TOut, TSubBag>,
     _input: TIn,
   ): Promise<TOut> {
     void _wf;
     void _input;
-    return await Promise.reject(new Error('not implemented'));
+    throw new Error('not implemented');
   }
 }
