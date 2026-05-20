@@ -33,3 +33,10 @@ export type Trace = {
   error?: SerializedError;
   steps: TraceStep[];
 };
+
+export function serializeError(cause: unknown): SerializedError {
+  if (cause instanceof Error) {
+    return { message: cause.message, stack: cause.stack };
+  }
+  return { message: String(cause) };
+}
