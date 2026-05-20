@@ -2,7 +2,7 @@ import type { Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import type { Node } from './node';
 import type { WorkflowFn } from './workflow';
-import type { Trace } from './trace';
+import { serializeError, type Trace, type TraceStep } from './trace';
 
 export interface Context<TBag extends Record<string, unknown>> {
   get<K extends keyof TBag>(key: K): TBag[K] | undefined;
@@ -39,13 +39,28 @@ export class ContextImpl<
     return this.bag.has(key);
   }
 
-  // run() and runWorkflow() are stubbed here so the class satisfies
-  // Context<TBag>. Real implementations land in Tasks 4 and 5.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/require-await
-  async run<I, O>(_node: Type<Node<I, O>>, _input: I): Promise<O> {
-    void this.trace;
-    void this.moduleRef;
-    throw new Error('not implemented');
+  async run<I, O>(node: Type<Node<I, O>>, input: I): Promise<O> {
+    const instance = this.moduleRef.get(node, { strict: false });
+    const step: TraceStep = {
+      kind: 'node',
+      name: node.name,
+      input,
+      startedAt: Date.now(),
+      finishedAt: 0,
+      status: 'ok',
+    };
+    this.trace.steps.push(step);
+    try {
+      const output = await instance.execute(input);
+      step.output = output;
+      step.finishedAt = Date.now();
+      return output;
+    } catch (cause) {
+      step.status = 'error';
+      step.error = serializeError(cause);
+      step.finishedAt = Date.now();
+      throw cause;
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await
