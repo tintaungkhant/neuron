@@ -158,23 +158,87 @@ describe('WorkflowEngine — error path', () => {
       imports: [EngineModule],
       providers: [BoomNode, GreetNode],
     }).compile();
-    const localEngine = localMod.get(WorkflowEngine);
+    try {
+      const localEngine = localMod.get(WorkflowEngine);
 
-    const wf: WorkflowFn<void, string> = async function recoverWf(_input, ctx) {
-      try {
-        await ctx.run(BoomNode, undefined);
-      } catch {
-        // swallow
-      }
-      return ctx.run(GreetNode, { name: 'bob' });
+      const wf: WorkflowFn<void, string> = async function recoverWf(
+        _input,
+        ctx,
+      ) {
+        try {
+          await ctx.run(BoomNode, undefined);
+        } catch {
+          // swallow
+        }
+        return ctx.run(GreetNode, { name: 'bob' });
+      };
+
+      const { result, trace } = await localEngine.run(wf, undefined);
+      expect(result).toBe('hi bob');
+      expect(trace.status).toBe('ok');
+      expect(trace.steps).toHaveLength(2);
+      expect(trace.steps[0]).toMatchObject({
+        name: 'BoomNode',
+        status: 'error',
+      });
+      expect(trace.steps[1]).toMatchObject({ name: 'GreetNode', status: 'ok' });
+    } finally {
+      await localMod.close();
+    }
+  });
+});
+
+describe('WorkflowEngine — sub-workflows', () => {
+  let mod: TestingModule;
+  let engine: WorkflowEngine;
+
+  beforeEach(async () => {
+    mod = await Test.createTestingModule({
+      imports: [EngineModule],
+      providers: [GreetNode],
+    }).compile();
+    engine = mod.get(WorkflowEngine);
+  });
+
+  afterEach(async () => {
+    await mod.close();
+  });
+
+  it('runs a sub-workflow through the engine and nests its trace', async () => {
+    const childWf: WorkflowFn<
+      { name: string },
+      string,
+      Record<string, never>
+    > = async function childWf(input, ctx) {
+      return ctx.run(GreetNode, { name: input.name });
     };
 
-    const { result, trace } = await localEngine.run(wf, undefined);
-    expect(result).toBe('hi bob');
+    const parentWf: WorkflowFn<
+      { name: string },
+      string,
+      Record<string, never>
+    > = async function parentWf(input, ctx) {
+      return ctx.runWorkflow(childWf, { name: input.name });
+    };
+
+    const { result, trace } = await engine.run(parentWf, { name: 'carol' });
+
+    expect(result).toBe('hi carol');
+    expect(trace.workflowName).toBe('parentWf');
     expect(trace.status).toBe('ok');
-    expect(trace.steps).toHaveLength(2);
-    expect(trace.steps[0]).toMatchObject({ name: 'BoomNode', status: 'error' });
-    expect(trace.steps[1]).toMatchObject({ name: 'GreetNode', status: 'ok' });
-    await localMod.close();
+    expect(trace.steps).toHaveLength(1);
+    const step = trace.steps[0];
+    expect(step.kind).toBe('subworkflow');
+    if (step.kind !== 'subworkflow') throw new Error('unreachable');
+    expect(step.name).toBe('childWf');
+    expect(step.status).toBe('ok');
+    expect(step.output).toBe('hi carol');
+    expect(step.trace.status).toBe('ok');
+    expect(step.trace.steps).toHaveLength(1);
+    expect(step.trace.steps[0]).toMatchObject({
+      kind: 'node',
+      name: 'GreetNode',
+      status: 'ok',
+    });
   });
 });
