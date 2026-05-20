@@ -1,7 +1,7 @@
 # Workflow Engine — Design Spec
 
-**Date:** 2026-05-20
-**Status:** Approved for implementation planning
+**Date:** 2026-05-20 (updated post-implementation: dropped context bag)
+**Status:** v1 shipped on `main`
 **Scope:** Core engine v1. No HTTP/CLI/cron adapters, no persistence, no UI.
 
 ## Goal
@@ -13,14 +13,40 @@ A code-defined workflow engine, conceptually "n8n developer edition". Developers
 | Concern | Choice |
 |---|---|
 | Control flow | Imperative — workflow is a plain async TS function |
-| Context | Per-workflow typed bag (`Context<TBag>`) + local return values |
-| Sub-workflow | Fresh bag, explicit input + return value, trace nests |
+| State | Local TS variables in the workflow body; nodes are pure (input → output). No shared bag. |
+| Sub-workflow | Independent invocation, explicit input + return value, trace nests |
 | Trigger | Programmatic only; HTTP/CLI/cron adapters out of scope for v1 |
 | Error handling | Plain TS `try/catch`; engine records all failures to trace |
 | Nodes | `@Injectable()` Nest providers, resolved via `ModuleRef` |
 | Workflows | Plain async functions (not Nest providers) |
 | Engine return | `{ result, trace }` on success; throws `WorkflowError` (with trace attached) on failure |
 | Trace | In-memory only; engine returns it, caller persists if wanted |
+
+### State management
+
+The engine deliberately does NOT carry a context bag. Cross-step state lives in the workflow function's local scope as plain TypeScript variables. Nodes receive only their typed `input` and return a typed `output` — they cannot read shared state. Rationale:
+
+- Local variables give a single, top-to-bottom-readable source of truth.
+- Pure-input/pure-output nodes are trivially testable in isolation.
+- Object references in JS are zero-copy: parsing once and passing the same array into multiple nodes does not duplicate memory.
+- The "shared mutable bag" pattern caused state-tracking bugs in past projects. Excluding it forces explicit state machine design in the workflow body.
+
+Idiomatic mutation pattern:
+
+```ts
+let state = { messages, findings: [] };
+
+const f1 = await ctx.run(LlmA, { messages: state.messages });
+state = { ...state, findings: [...state.findings, f1] };
+
+const out2 = await ctx.run(LlmB, {
+  messages: state.messages,
+  priorFindings: state.findings,
+});
+state = { ...state, findings: [...state.findings, out2] };
+```
+
+Each `state = ...` reassignment is explicit and greppable; the trace records every node's input as a snapshot of state at that step.
 
 ## Architecture
 
@@ -34,33 +60,28 @@ Five pieces:
 
 2. **Workflow** — plain async function. Not a Nest provider. Imported and passed by reference.
    ```ts
-   type WorkflowFn<TIn, TOut, TBag = {}> =
-     (input: TIn, ctx: Context<TBag>) => Promise<TOut>;
+   type WorkflowFn<TIn = unknown, TOut = unknown> =
+     (input: TIn, ctx: Context) => Promise<TOut>;
    ```
 
-3. **`Context<TBag>`** — runtime object passed to workflow body. Owns the per-run bag and exposes node/sub-workflow invocation.
+3. **`Context`** — runtime object passed to workflow body. Exposes node and sub-workflow invocation. No bag.
    ```ts
-   interface Context<TBag extends Record<string, unknown>> {
-     get<K extends keyof TBag>(key: K): TBag[K] | undefined;
-     set<K extends keyof TBag>(key: K, value: TBag[K]): void;
-     has<K extends keyof TBag>(key: K): boolean;
-
+   interface Context {
      run<I, O>(node: Type<Node<I, O>>, input: I): Promise<O>;
-     runWorkflow<TIn, TOut, TSubBag extends Record<string, unknown>>(
-       wf: WorkflowFn<TIn, TOut, TSubBag>,
+     runWorkflow<TIn, TOut>(
+       wf: WorkflowFn<TIn, TOut>,
        input: TIn,
      ): Promise<TOut>;
    }
    ```
-   `getRequired<K>(key)` may be added if missing-key-throws ergonomics prove useful in practice. Not part of v1.
 
 4. **`WorkflowEngine`** — `@Injectable()` Nest service. Single public entry point.
    ```ts
    @Injectable()
    class WorkflowEngine {
      constructor(private moduleRef: ModuleRef) {}
-     run<TIn, TOut, TBag extends Record<string, unknown>>(
-       wf: WorkflowFn<TIn, TOut, TBag>,
+     run<TIn, TOut>(
+       wf: WorkflowFn<TIn, TOut>,
        input: TIn,
      ): Promise<{ result: TOut; trace: Trace }>;
    }
@@ -128,9 +149,9 @@ try {
 src/
   engine/
     node.ts            # abstract Node<I, O>
-    context.ts         # Context<TBag> interface + impl
-    workflow.ts        # WorkflowFn<TIn, TOut, TBag> type
-    trace.ts           # Trace, TraceStep types
+    context.ts         # Context interface + ContextImpl
+    workflow.ts        # WorkflowFn<TIn, TOut> type
+    trace.ts           # Trace, TraceStep types, serializeError
     errors.ts          # WorkflowError
     engine.ts          # WorkflowEngine service
     engine.module.ts   # @Module exporting WorkflowEngine
@@ -145,20 +166,20 @@ User-defined nodes and workflows live outside `src/engine/` (e.g. `src/nodes/`, 
 ### `engine.run(wf, input)` lifecycle
 
 1. Engine creates a fresh `Trace`: `workflowName = wf.name`, `startedAt = Date.now()`, empty `steps[]`.
-2. Engine creates a fresh `Context`: empty bag, holding a reference to `ModuleRef` and the current `Trace`.
+2. Engine creates a fresh `Context` holding references to `ModuleRef` and the current `Trace`.
 3. Engine wraps the workflow call:
    ```ts
    try {
      const result = await wf(input, ctx);
      trace.status = 'ok';
      trace.output = result;
+     trace.finishedAt = Date.now();
      return { result, trace };
    } catch (cause) {
      trace.status = 'error';
      trace.error = serializeError(cause);
-     throw new WorkflowError(cause, trace);
-   } finally {
      trace.finishedAt = Date.now();
+     throw new WorkflowError(cause, trace);
    }
    ```
 
@@ -172,26 +193,24 @@ User-defined nodes and workflows live outside `src/engine/` (e.g. `src/nodes/`, 
 
 ### `ctx.runWorkflow(subWf, subInput)` lifecycle
 
-1. Create a child `Context` with a fresh bag and a fresh `Trace` (independent of parent's).
+1. Create a child `Context` with a fresh `Trace` (independent of parent's).
 2. Run the same lifecycle as `engine.run` against the child context.
 3. Append a `TraceStep` of `kind: 'subworkflow'` to the parent trace, embedding the child trace.
 4. Return the child workflow's result to the parent.
 
 If a sub-workflow throws, the engine still records it as a subworkflow step on the parent trace, then re-throws the original cause so the parent can `try/catch` or bubble.
 
-### Bag and trace lifetimes
+### Trace lifetime
 
-- Bag: created empty when context is created. Lives until the workflow returns or throws. Discarded after `engine.run` returns. Not shared across runs. Parent and child sub-workflows have independent bags.
-- Trace: built in memory during the run. Returned to caller. Engine does not persist anywhere.
+Built in memory during the run. Returned to caller. Engine does not persist anywhere. Caller writes to file/logger/HTTP response if needed.
 
 ## Type-safety contract
 
 The engine guarantees, at compile time:
 
-- Node input and output types: `ctx.run(NodeClass, input)` requires `input: I` and returns `Promise<O>` matching `Node<I, O>`.
-- Bag keys: `ctx.set` and `ctx.get` are constrained to `keyof TBag`. Unknown keys are TS errors.
-- Bag values: `ctx.set(key, value)` requires `value` to match `TBag[key]`.
-- Sub-workflow input/output: typed by the imported `WorkflowFn` reference.
+- **Node input and output types**: `ctx.run(NodeClass, input)` requires `input: I` and returns `Promise<O>` matching `Node<I, O>`.
+- **Sub-workflow input and output types**: typed by the imported `WorkflowFn` reference.
+- **Local state**: a plain TypeScript variable. Author's `let state: MyState = ...` declaration carries the full type. No bag means no compile-time string-key lookups to enforce.
 
 No `any`, no string-typed casts, no runtime type checks required in user code.
 
@@ -225,9 +244,15 @@ src/workflows/*.spec.ts     # workflow tests
 - Visual editor or live execution UI (a future read-only UI consumes traces).
 - Workflow versioning, migrations, scheduled execution.
 - Dynamic workflow construction from JSON / data (would require a DSL).
+- Shared context bag / scoped key-value state. Investigated during v1 implementation, removed before declaring v1.1 done — see "State management" above. If a future use case (e.g. ambient request-scoped data needed by many deep nodes) makes the alternative untenable, re-evaluate; otherwise stay with local-state pattern.
+
+## Change log
+
+- **v1.0** (initial): shipped with `Context<TBag>` carrying a typed bag (`get`/`set`/`has`).
+- **v1.1** (commit `1e363ef`): bag removed. `Context`, `ContextImpl`, `WorkflowFn`, `WorkflowEngine.run` lost their `TBag` generic. Workflows manage state via local TS variables instead.
 
 ## Open questions deferred to implementation
 
-- Whether `Context.getRequired` (throws on missing key) should ship in v1. Decide once we see real workflows.
 - Whether `engine.run` should also support being given a node class directly (`engine.run(SomeNode, input)`) as a one-off convenience. Probably no, to keep the surface tight.
 - Logging integration — engine emits trace data only as return value for v1. A Nest logger hook can be added later without breaking the public API.
+- If real workflows produce traces large enough to cause memory pressure, add streaming/sink semantics. Out of scope until measured.

@@ -1,10 +1,21 @@
 # Workflow Engine v1 Implementation Plan
 
+> **Status (post-execution):** This plan was executed and shipped to `main` as 10 commits (`f5f8839` → `0ead3f6`). A follow-up refactor (`1e363ef`) then DROPPED the context bag. Treat this document as the historical implementation record. The authoritative description of the current engine API lives in `docs/superpowers/specs/2026-05-20-workflow-engine-design.md`.
+>
+> **Deltas vs. as-shipped engine (v1.1):**
+> - `Context<TBag>` is now just `Context` (no `TBag` generic).
+> - `Context.get` / `Context.set` / `Context.has` are gone. So is the `bag` field on `ContextImpl`.
+> - `WorkflowFn<TIn, TOut, TBag>` is now `WorkflowFn<TIn, TOut>`.
+> - `WorkflowEngine.run<TIn, TOut, TBag>` is now `WorkflowEngine.run<TIn, TOut>`.
+> - Task 3's "bag operations" tests and Task 5's "parent bag is independent of child bag" test no longer exist in the source.
+>
+> If you are reading this plan to rebuild from scratch, skip the bag-related code in Tasks 3 and 5. Otherwise the file structure, error handling, trace shape, DI wiring, and sub-workflow nesting are all still correct.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the workflow engine kernel described in `docs/superpowers/specs/2026-05-20-workflow-engine-design.md`: an imperative TS workflow runtime with typed context bags, Nest-DI-resolved nodes, in-memory traces, and programmatic-only triggering.
+**Goal:** Build the workflow engine kernel described in `docs/superpowers/specs/2026-05-20-workflow-engine-design.md`: an imperative TS workflow runtime with Nest-DI-resolved nodes, in-memory traces, and programmatic-only triggering. (Original plan also included a typed context bag; that was removed in v1.1 — see status block above.)
 
-**Architecture:** A single `EngineModule` exporting a `WorkflowEngine` service. Engine holds a `ModuleRef`, resolves `@Injectable()` `Node` providers, and runs plain-async-function workflows. Each run gets a fresh `Context<TBag>` carrying a typed bag, a trace, and the `ModuleRef`. Sub-workflows are recursive `ContextImpl` runs whose trace embeds in the parent step list. Workflow failures throw `WorkflowError` with the trace attached.
+**Architecture:** A single `EngineModule` exporting a `WorkflowEngine` service. Engine holds a `ModuleRef`, resolves `@Injectable()` `Node` providers, and runs plain-async-function workflows. Each run gets a fresh `Context` carrying a trace and the `ModuleRef`. Sub-workflows are recursive `ContextImpl` runs whose trace embeds in the parent step list. Workflow failures throw `WorkflowError` with the trace attached.
 
 **Tech Stack:** TypeScript 5.7, NestJS 11, pnpm, Jest 30 (ts-jest), ESLint 9.
 
