@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Node } from './node';
 import { WorkflowEngine } from './engine';
 import { EngineModule } from './engine.module';
+import { WorkflowError } from './errors';
 import type { WorkflowFn } from './workflow';
 
 @Injectable()
@@ -64,5 +65,116 @@ describe('WorkflowEngine — happy path', () => {
       status: 'ok',
     });
     expect(trace.finishedAt).toBeGreaterThanOrEqual(trace.startedAt);
+  });
+});
+
+describe('WorkflowEngine — error path', () => {
+  let mod: TestingModule;
+  let engine: WorkflowEngine;
+
+  beforeEach(async () => {
+    mod = await Test.createTestingModule({
+      imports: [EngineModule],
+      providers: [GreetNode],
+    }).compile();
+    engine = mod.get(WorkflowEngine);
+  });
+
+  afterEach(async () => {
+    await mod.close();
+  });
+
+  it('throws WorkflowError with trace when workflow throws', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    const wf: WorkflowFn<void, void> = async function failingWf() {
+      throw new Error('nope');
+    };
+
+    await expect(engine.run(wf, undefined)).rejects.toBeInstanceOf(
+      WorkflowError,
+    );
+
+    try {
+      await engine.run(wf, undefined);
+      throw new Error('expected throw');
+    } catch (e) {
+      expect(e).toBeInstanceOf(WorkflowError);
+      const we = e as WorkflowError;
+      expect(we.message).toBe('nope');
+      expect(we.trace.workflowName).toBe('failingWf');
+      expect(we.trace.status).toBe('error');
+      expect(we.trace.error?.message).toBe('nope');
+      expect(we.trace.finishedAt).toBeGreaterThanOrEqual(we.trace.startedAt);
+    }
+  });
+
+  it('records the failing node step in the trace when a node throws', async () => {
+    @Injectable()
+    class FailingNode extends Node<void, void> {
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async execute() {
+        throw new Error('node-failure');
+      }
+    }
+
+    const localMod = await Test.createTestingModule({
+      imports: [EngineModule],
+      providers: [FailingNode],
+    }).compile();
+    const localEngine = localMod.get(WorkflowEngine);
+
+    const wf: WorkflowFn<void, void> = async function uncaughtWf(_input, ctx) {
+      await ctx.run(FailingNode, undefined);
+    };
+
+    try {
+      await localEngine.run(wf, undefined);
+      throw new Error('expected throw');
+    } catch (e) {
+      expect(e).toBeInstanceOf(WorkflowError);
+      const we = e as WorkflowError;
+      expect(we.trace.steps).toHaveLength(1);
+      expect(we.trace.steps[0]).toMatchObject({
+        kind: 'node',
+        name: 'FailingNode',
+        status: 'error',
+        error: { message: 'node-failure' },
+      });
+    } finally {
+      await localMod.close();
+    }
+  });
+
+  it('continues execution when workflow catches the node error', async () => {
+    @Injectable()
+    class BoomNode extends Node<void, void> {
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async execute() {
+        throw new Error('boom');
+      }
+    }
+
+    const localMod = await Test.createTestingModule({
+      imports: [EngineModule],
+      providers: [BoomNode, GreetNode],
+    }).compile();
+    const localEngine = localMod.get(WorkflowEngine);
+
+    const wf: WorkflowFn<void, string> = async function recoverWf(_input, ctx) {
+      try {
+        await ctx.run(BoomNode, undefined);
+      } catch {
+        // swallow
+      }
+      return ctx.run(GreetNode, { name: 'bob' });
+    };
+
+    const { result, trace } = await localEngine.run(wf, undefined);
+    expect(result).toBe('hi bob');
+    expect(trace.status).toBe('ok');
+    expect(trace.steps).toHaveLength(2);
+    expect(trace.steps[0]).toMatchObject({ name: 'BoomNode', status: 'error' });
+    expect(trace.steps[1]).toMatchObject({ name: 'GreetNode', status: 'ok' });
+    await localMod.close();
   });
 });
