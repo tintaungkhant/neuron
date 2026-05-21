@@ -1,5 +1,13 @@
 # AI Agent Node Implementation Plan
 
+> **Status (2026-05-21): IMPLEMENTED.** All tasks shipped. The memory tasks
+> (6–9) were executed with a revised design — memory persists only the final
+> human/AI text of each turn, the `agent_messages` schema dropped its `jsonb`
+> columns, `sessionId` is namespaced `projectId:chatId`, and `DbConnection`
+> replaced the `DRIZZLE` factory token. The authoritative, up-to-date design is
+> `docs/superpowers/specs/2026-05-21-ai-agent-node-design.md` (see its "Memory
+> revision" note). This plan is kept as a historical record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an `AiAgentNode` to the workflow engine that runs an LLM tool-calling loop, fed by four inputs — payload, chat model, memory, tools — with an OpenRouter chat model and a Postgres-backed memory.
