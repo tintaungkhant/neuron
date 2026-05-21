@@ -241,7 +241,7 @@ function normalizeAttachment(
 }
 
 @Injectable()
-export class TelegramInNode extends Node<
+export class TelegramWebhookNode extends Node<
   TelegramWebhookPayload,
   TelegramWebhookOutput
 > {

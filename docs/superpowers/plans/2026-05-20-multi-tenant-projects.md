@@ -305,7 +305,7 @@ git commit -m "feat(projects): ProjectRegistry with injected registrations"
 
 ---
 
-## Task 4: Shared `TelegramInNode`
+## Task 4: Shared `TelegramWebhookNode`
 
 A domain-generic node that parses a Telegram `Update` into `{ chatId, text }`. Project-agnostic; reusable across any project that handles Telegram.
 
@@ -318,11 +318,11 @@ A domain-generic node that parses a Telegram `Update` into `{ chatId, text }`. P
 Create `src/shared/nodes/telegram-in.node.spec.ts`:
 
 ```ts
-import { TelegramInNode } from './telegram-in.node';
+import { TelegramWebhookNode } from './telegram-in.node';
 
-describe('TelegramInNode', () => {
+describe('TelegramWebhookNode', () => {
   it('parses chatId and text from a Telegram update', async () => {
-    const node = new TelegramInNode();
+    const node = new TelegramWebhookNode();
     const out = await node.execute({
       message: { chat: { id: 42 }, text: 'hello' },
     });
@@ -330,13 +330,13 @@ describe('TelegramInNode', () => {
   });
 
   it('returns chatId 0 and empty text when message is missing', async () => {
-    const node = new TelegramInNode();
+    const node = new TelegramWebhookNode();
     const out = await node.execute({});
     expect(out).toEqual({ chatId: 0, text: '' });
   });
 
   it('returns chatId from chat and empty text when text is missing', async () => {
-    const node = new TelegramInNode();
+    const node = new TelegramWebhookNode();
     const out = await node.execute({ message: { chat: { id: 7 } } });
     expect(out).toEqual({ chatId: 7, text: '' });
   });
@@ -348,7 +348,7 @@ describe('TelegramInNode', () => {
 Run: `pnpm test -- telegram-in.node.spec`
 Expected: FAIL — `./telegram-in.node` not found.
 
-- [ ] **Step 3: Implement `TelegramInNode`**
+- [ ] **Step 3: Implement `TelegramWebhookNode`**
 
 Create `src/shared/nodes/telegram-in.node.ts`:
 
@@ -363,7 +363,7 @@ export type TelegramInOutput = {
 };
 
 @Injectable()
-export class TelegramInNode extends Node<TelegramUpdate, TelegramInOutput> {
+export class TelegramWebhookNode extends Node<TelegramUpdate, TelegramInOutput> {
   execute(input: TelegramUpdate): Promise<TelegramInOutput> {
     const chatId = input.message?.chat.id ?? 0;
     const text = input.message?.text ?? '';
@@ -390,7 +390,7 @@ Expected: clean; full suite 25/25.
 
 ```bash
 git add src/shared/nodes/telegram-in.node.ts src/shared/nodes/telegram-in.node.spec.ts
-git commit -m "feat(shared): TelegramInNode parses chatId + text from update"
+git commit -m "feat(shared): TelegramWebhookNode parses chatId + text from update"
 ```
 
 ---
@@ -898,7 +898,7 @@ import { Module } from '@nestjs/common';
 export class DemoModule {}
 ```
 
-Empty providers list. The demo project has no project-specific nodes — its workflow uses shared nodes (`TelegramInNode`, `SayHiNode`). The module exists so future demo-specific nodes have a place to land and so `ProjectsModule` has a consistent shape to import.
+Empty providers list. The demo project has no project-specific nodes — its workflow uses shared nodes (`TelegramWebhookNode`, `SayHiNode`). The module exists so future demo-specific nodes have a place to land and so `ProjectsModule` has a consistent shape to import.
 
 - [ ] **Step 3: Write failing test for the demo workflow**
 
@@ -907,7 +907,7 @@ Create `src/projects/demo/workflows/telegram-hi.workflow.spec.ts`:
 ```ts
 import { Test, TestingModule } from '@nestjs/testing';
 import { EngineModule, WorkflowEngine } from '../../../engine';
-import { TelegramInNode } from '../../../shared/nodes/telegram-in.node';
+import { TelegramWebhookNode } from '../../../shared/nodes/telegram-in.node';
 import { SayHiNode } from '../../../shared/nodes/say-hi.node';
 import type {
   TelegramUpdate,
@@ -924,7 +924,7 @@ describe('demoTelegramHiWf', () => {
   beforeEach(async () => {
     mod = await Test.createTestingModule({
       imports: [EngineModule],
-      providers: [TelegramInNode, SayHiNode],
+      providers: [TelegramWebhookNode, SayHiNode],
     }).compile();
     engine = mod.get(WorkflowEngine);
     fetchSpy = jest
@@ -947,7 +947,7 @@ describe('demoTelegramHiWf', () => {
 
     expect(trace.status).toBe('ok');
     expect(trace.steps).toHaveLength(2);
-    expect(trace.steps[0]).toMatchObject({ name: 'TelegramInNode', status: 'ok' });
+    expect(trace.steps[0]).toMatchObject({ name: 'TelegramWebhookNode', status: 'ok' });
     expect(trace.steps[1]).toMatchObject({ name: 'SayHiNode', status: 'ok' });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -972,7 +972,7 @@ Create `src/projects/demo/workflows/telegram-hi.workflow.ts`:
 
 ```ts
 import type { WorkflowFn } from '../../../engine';
-import { TelegramInNode } from '../../../shared/nodes/telegram-in.node';
+import { TelegramWebhookNode } from '../../../shared/nodes/telegram-in.node';
 import { SayHiNode } from '../../../shared/nodes/say-hi.node';
 import type {
   TelegramUpdate,
@@ -984,7 +984,7 @@ export const demoTelegramHiWf: WorkflowFn<
   TriggerInput<DemoConfig, TelegramUpdate>,
   void
 > = async function demoTelegramHiWf(input, ctx) {
-  const parsed = await ctx.run(TelegramInNode, input.payload);
+  const parsed = await ctx.run(TelegramWebhookNode, input.payload);
   await ctx.run(SayHiNode, {
     botToken: input.project.config.telegramBotToken,
     chatId: parsed.chatId,

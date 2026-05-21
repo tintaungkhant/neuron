@@ -1,7 +1,7 @@
-import { TelegramInNode } from './webhook.node';
+import { TelegramWebhookNode } from './webhook.node';
 
-describe('TelegramInNode', () => {
-  const node = new TelegramInNode();
+describe('TelegramWebhookNode', () => {
+  const node = new TelegramWebhookNode();
 
   it('parses a text message into the normalized output', async () => {
     const out = await node.execute({

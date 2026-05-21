@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EngineModule, WorkflowEngine } from '../../../engine';
 import {
-  TelegramInNode,
+  TelegramWebhookNode,
   type TelegramWebhookPayload,
 } from '../../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
@@ -17,7 +17,7 @@ describe('demoTelegramHiWf', () => {
   beforeEach(async () => {
     mod = await Test.createTestingModule({
       imports: [EngineModule],
-      providers: [TelegramInNode, TelegramSendMessageNode],
+      providers: [TelegramWebhookNode, TelegramSendMessageNode],
     }).compile();
     engine = mod.get(WorkflowEngine);
     fetchSpy = jest
@@ -49,7 +49,7 @@ describe('demoTelegramHiWf', () => {
     expect(trace.status).toBe('ok');
     expect(trace.steps).toHaveLength(2);
     expect(trace.steps[0]).toMatchObject({
-      name: 'TelegramInNode',
+      name: 'TelegramWebhookNode',
       status: 'ok',
     });
     expect(trace.steps[1]).toMatchObject({

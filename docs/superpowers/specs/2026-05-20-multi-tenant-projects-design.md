@@ -220,14 +220,14 @@ export const acmeProject: Project<AcmeConfig> = {
 import type { WorkflowFn } from '../../../engine';
 import type { TriggerInput, TelegramUpdate } from '../../project.types';
 import type { AcmeConfig } from '../acme.config';
-import { TelegramInNode } from '../../../shared/nodes/telegram-in.node';
+import { TelegramWebhookNode } from '../../../shared/nodes/telegram-in.node';
 import { SayHiNode } from '../../../shared/nodes/say-hi.node';
 
 export const acmeTelegramGreetWf: WorkflowFn<
   TriggerInput<AcmeConfig, TelegramUpdate>,
   void
 > = async function acmeTelegramGreetWf(input, ctx) {
-  const parsed = await ctx.run(TelegramInNode, input.payload);
+  const parsed = await ctx.run(TelegramWebhookNode, input.payload);
   await ctx.run(SayHiNode, {
     botToken: input.project.config.telegramBotToken,
     chatId: parsed.chatId,
@@ -290,7 +290,7 @@ export class TelegramController {
 }
 ```
 
-Controller is dispatch-only. It does not know about Acme or Globex. It does not validate the update body shape — that's the workflow's first node's job (`TelegramInNode`).
+Controller is dispatch-only. It does not know about Acme or Globex. It does not validate the update body shape — that's the workflow's first node's job (`TelegramWebhookNode`).
 
 Engine errors are caught and logged. The HTTP response is always 200 to Telegram to avoid retry storms. (Production may differentiate later: 5xx for true infra failures, 200 for workflow errors.)
 
