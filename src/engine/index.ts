@@ -9,6 +9,7 @@ export type { Trace, TraceStep, SerializedError } from './trace';
 export { AiAgentNode } from './nodes/ai/agent.node';
 export type { AiAgentInput, AiAgentOutput } from './nodes/ai/agent.node';
 export { OpenRouterChatModel } from './nodes/ai/openrouter-chat-model';
+export { PgChatMemory } from './nodes/ai/pg-chat-memory';
 export type {
   ChatRole,
   ToolCall,
