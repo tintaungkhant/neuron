@@ -178,18 +178,18 @@ parameters) — the chat model only needs the schema, not `execute`.
 ```ts
 @Injectable()
 export class OpenRouterChatModel implements ChatModel {
-  private readonly apiKey = requireEnv('OPENROUTER_API_KEY');
-  private readonly model = process.env.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
-
   async complete(req: ChatCompletionRequest): Promise<ChatCompletionResult> {
+    const apiKey = requireEnv('OPENROUTER_API_KEY');
+    const model = process.env.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
+
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.apiKey}`,
+        authorization: `Bearer ${apiKey}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: this.model,
+        model,
         messages: req.messages.map(toOpenAiMessage),
         tools: req.tools?.map(toOpenAiTool),
       }),
@@ -203,6 +203,10 @@ export class OpenRouterChatModel implements ChatModel {
 }
 ```
 
+Env is read **inside `complete`**, not in a field initializer — so constructing
+the provider during DI never throws when the key is absent (existing specs
+import `EngineModule` and would otherwise break).
+
 Mapping between our port types and the OpenAI wire format:
 
 - `ChatMessage` → OpenAI message. An assistant message with `toolCalls` maps to
@@ -215,7 +219,8 @@ Mapping between our port types and the OpenAI wire format:
 - `ToolSpec` → `{type:'function', function:{name, description, parameters}}`.
 
 `requireEnv` is a small local helper (throws if the env var is missing), the same
-pattern already used in `allinonedm.config.ts`.
+pattern already used in `allinonedm.config.ts`. `OpenRouterChatModel` defines its
+own copy.
 
 The model id comes from `OPENROUTER_MODEL`. Per-agent model selection is out of
 scope this round — that is what future native model nodes (Gemini, OpenAI) are
@@ -244,10 +249,13 @@ export const DRIZZLE = Symbol('DRIZZLE');
 export type Db = NodePgDatabase<typeof schema>;
 
 export function createDb(): Db {
-  const pool = new Pool({ connectionString: requireEnv('DATABASE_URL') });
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   return drizzle(pool, { schema });
 }
 ```
+
+`Pool` construction is lazy — it does not connect until the first query — so a
+missing `DATABASE_URL` does not break DI or specs that never query.
 
 `src/engine/db/db.module.ts` — a `@Global` module so the `DRIZZLE` token is
 resolvable everywhere:
