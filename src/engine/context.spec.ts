@@ -134,3 +134,17 @@ describe('ContextImpl.runWorkflow', () => {
     expect(step.trace.error?.message).toBe('child boom');
   });
 });
+
+describe('ContextImpl.get', () => {
+  it('resolves a provider via ModuleRef with strict:false', () => {
+    class SomeService {}
+    const instance = new SomeService();
+    const get = jest.fn().mockReturnValue(instance);
+    const { ctx } = makeCtxWithRef({ get });
+
+    const resolved = ctx.get(SomeService);
+
+    expect(resolved).toBe(instance);
+    expect(get).toHaveBeenCalledWith(SomeService, { strict: false });
+  });
+});
