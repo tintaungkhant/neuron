@@ -1,7 +1,13 @@
 # AI Agent Node — Design
 
-**Status:** APPROVED (2026-05-21)
+**Status:** APPROVED (2026-05-21) — memory section revised 2026-05-21
 **Depends on:** the code-defined workflow engine (`src/engine/`).
+
+> **Memory revision (2026-05-21):** Memory persists only the *final* human and
+> AI text of each turn — never the intermediate tool-call / tool-result
+> messages. Those are run-internal scratch. This keeps stored history flat
+> (`user`/`assistant` text only), removes the tool-pair slicing hazard, and
+> simplifies the schema (no `jsonb` columns).
 
 ## Goal
 
@@ -57,8 +63,8 @@ src/engine/nodes/ai/                NEW — built-in implementations
   pg-chat-memory.ts         PgChatMemory implements ChatMemory
 src/engine/db/                      NEW — Drizzle / Postgres
   schema.ts        agentMessages table
-  client.ts        DRIZZLE token, Db type, createDb()
-  db.module.ts     @Global DbModule providing DRIZZLE
+  client.ts        DbConnection (Pool + Drizzle + shutdown), Db type
+  db.module.ts     @Global DbModule providing DbConnection
 src/engine/context.ts               MODIFY — add Context.get() + ContextImpl.get()
 src/engine/engine.module.ts         MODIFY — import DbModule; provide+export AI nodes
 src/engine/index.ts                 MODIFY — export AI ports + AiAgentNode
@@ -142,7 +148,7 @@ export interface AiAgentInput {
 
 export interface AiAgentOutput {
   output: string;          // final assistant text
-  messages: ChatMessage[]; // this turn's messages: user msg + every assistant/tool msg
+  messages: ChatMessage[]; // the clean turn: [userMsg, finalAssistantMsg]
 }
 
 @Injectable()
@@ -151,24 +157,27 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> { ... }
 
 `execute` algorithm:
 
-1. `history = input.memory ? await input.memory.load(payload.sessionId) : []`
-2. Let `userMsg = {role:'user', content: payload.input}` and
-   `turnMessages = [userMsg]` — the messages this turn produces. Build the
-   working message list:
+1. `history = input.memory ? await input.memory.load(payload.sessionId) : []` —
+   `history` holds only `user`/`assistant` text messages (see Memory).
+2. Let `userMsg = {role:'user', content: payload.input}`. Build the working
+   message list:
    `messages = [ {role:'system', content: systemPrompt} (if provided), ...history, userMsg ]`.
 3. Loop, at most `maxSteps` iterations:
    - `res = await chatModel.complete({ messages, tools: tools?.map(toSpec) })`
-   - Push `res.message` onto both `messages` and `turnMessages`.
+   - Push `res.message` onto `messages`.
    - If `res.message.toolCalls?.length`: for each call, find the tool by `name`
      in `tools`; if missing, throw. Run `tool.execute(call.arguments)`. Build a
      `{role:'tool', toolCallId: call.id, content: JSON.stringify(result)}`
-     message, push it onto both `messages` and `turnMessages`. Continue the loop.
-   - Otherwise: the assistant gave a final answer — stop.
+     message and push it onto `messages`. Continue the loop.
+   - Otherwise: the assistant gave a final answer — record it as
+     `finalAssistant` and stop.
 4. If the loop ran `maxSteps` times without a final answer, throw.
-5. `await input.memory?.append(payload.sessionId, turnMessages)` — the user
-   message plus every assistant/tool message generated in step 3. History
-   loaded in step 1 is NOT re-appended.
-6. Return `{ output: lastAssistantMessage.content, messages: turnMessages }`.
+5. `turn = [userMsg, finalAssistant]` — the clean turn. `tool-call` /
+   `tool-result` messages built in step 3 stay in the in-RAM `messages` array
+   (the model needs them within this run) but are **never** part of `turn`.
+6. `await input.memory?.append(payload.sessionId, turn)` — persist only the
+   clean turn. History loaded in step 1 is NOT re-appended.
+7. Return `{ output: finalAssistant.content, messages: turn }`.
 
 `toSpec` strips an `AgentTool` down to its `ToolSpec` fields (name, description,
 parameters) — the chat model only needs the schema, not `execute`.
@@ -228,43 +237,50 @@ for. The `ChatModel` port is the swap point.
 
 ### Postgres memory — Drizzle
 
+Memory holds only the clean conversation: `user` and `assistant` text rows. No
+tool calls, no tool results — so no `jsonb` column is needed.
+
 `src/engine/db/schema.ts`:
 
 ```ts
 export const agentMessages = pgTable('agent_messages', {
   id: serial('id').primaryKey(),
   sessionId: text('session_id').notNull(),
-  role: text('role').notNull(),
+  role: text('role').notNull(),    // 'user' | 'assistant'
   content: text('content').notNull(),
-  toolCalls: jsonb('tool_calls'),     // ToolCall[] | null
-  toolCallId: text('tool_call_id'),   // string | null
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [index('agent_messages_session_idx').on(t.sessionId, t.id)]);
 ```
 
-`src/engine/db/client.ts`:
+`src/engine/db/client.ts` — one injectable owns the `pg` `Pool`, the Drizzle
+handle, and shutdown:
 
 ```ts
-export const DRIZZLE = Symbol('DRIZZLE');
 export type Db = NodePgDatabase<typeof schema>;
 
-export function createDb(): Db {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  return drizzle(pool, { schema });
+@Injectable()
+export class DbConnection implements OnModuleDestroy {
+  private readonly pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  readonly db: Db = drizzle(this.pool, { schema });
+
+  async onModuleDestroy(): Promise<void> {
+    await this.pool.end();
+  }
 }
 ```
 
 `Pool` construction is lazy — it does not connect until the first query — so a
 missing `DATABASE_URL` does not break DI or specs that never query.
+`onModuleDestroy` closes the pool on app shutdown.
 
-`src/engine/db/db.module.ts` — a `@Global` module so the `DRIZZLE` token is
+`src/engine/db/db.module.ts` — a `@Global` module so `DbConnection` is
 resolvable everywhere:
 
 ```ts
 @Global()
 @Module({
-  providers: [{ provide: DRIZZLE, useFactory: createDb }],
-  exports: [DRIZZLE],
+  providers: [DbConnection],
+  exports: [DbConnection],
 })
 export class DbModule {}
 ```
@@ -276,27 +292,27 @@ export class DbModule {}
 export class PgChatMemory implements ChatMemory {
   private readonly windowSize = 20;
 
-  constructor(@Inject(DRIZZLE) private readonly db: Db) {}
+  constructor(private readonly conn: DbConnection) {}
 
   async load(sessionId: string): Promise<ChatMessage[]> {
-    const rows = await this.db
+    const rows = await this.conn.db
       .select()
       .from(agentMessages)
       .where(eq(agentMessages.sessionId, sessionId))
       .orderBy(desc(agentMessages.id))
       .limit(this.windowSize);
-    return rows.reverse().map(rowToMessage); // oldest-first
+    return rows
+      .reverse() // oldest-first
+      .map((r) => ({ role: r.role as ChatMessage['role'], content: r.content }));
   }
 
   async append(sessionId: string, messages: ChatMessage[]): Promise<void> {
     if (messages.length === 0) return;
-    await this.db.insert(agentMessages).values(
+    await this.conn.db.insert(agentMessages).values(
       messages.map((m) => ({
         sessionId,
         role: m.role,
         content: m.content,
-        toolCalls: m.toolCalls ?? null,
-        toolCallId: m.toolCallId ?? null,
       })),
     );
   }
@@ -304,8 +320,11 @@ export class PgChatMemory implements ChatMemory {
 ```
 
 `load` fetches the most recent `windowSize` (20) rows, then reverses to
-chronological order. `rowToMessage` drops `null` `toolCalls`/`toolCallId` so the
-returned `ChatMessage` objects omit those keys when absent.
+chronological order. Because stored rows are only flat `user`/`assistant` text,
+a fixed message-count window can never slice a tool-call pair. The `AiAgentNode`
+hands `append` only the clean turn (`[userMsg, finalAssistant]`), so the
+`toolCalls`/`toolCallId` fields a `ChatMessage` *can* carry are simply never set
+on rows that reach here.
 
 `drizzle.config.ts` at the repo root points `drizzle-kit` at the schema; the
 generated SQL goes in `drizzle/` and is committed. `package.json` gains
@@ -365,7 +384,10 @@ export const telegramWorkflow: WorkflowFn<
   if (!parsed.text) return; // ignore non-text updates
 
   const agent = await ctx.run(AiAgentNode, {
-    payload: { input: parsed.text, sessionId: String(parsed.chat.id) },
+    payload: {
+      input: parsed.text,
+      sessionId: `${input.project.id}:${parsed.chat.id}`,
+    },
     systemPrompt: 'You are a helpful assistant.',
     chatModel: ctx.get(OpenRouterChatModel),
     memory: ctx.get(PgChatMemory),
@@ -380,7 +402,8 @@ export const telegramWorkflow: WorkflowFn<
 };
 ```
 
-`sessionId` is the Telegram chat id — memory is per-conversation.
+`sessionId` is `${projectId}:${chatId}` — namespaced so two projects sharing a
+Telegram chat id do not share memory.
 
 Inside the agent, one turn: load history → send to OpenRouter → if the model
 requests tools (none configured here, so this never fires yet) run them and loop
@@ -413,17 +436,18 @@ user does runtime verification.
     ran and its result was fed back;
   - `maxSteps` exceeded — model always returns a tool call → `execute` throws;
   - unknown tool — model requests a name not in `tools` → throws;
-  - memory — `load` is awaited before the first model call, `append` receives
-    the user message plus this turn's new messages;
+  - memory — `load` is awaited before the first model call; `append` receives
+    exactly `[userMsg, finalAssistant]` even when the turn ran tools (tool
+    messages are never persisted);
   - no memory — `memory` undefined → runs fine, `load`/`append` never called.
 - `openrouter-chat-model.spec.ts` — stub global `fetch`. Assert the request body
   (model, messages and tools mapped to OpenAI shape) and the response mapping
   (`tool_calls` JSON-string arguments parsed; `null` content normalized). Assert
   a non-OK response throws.
-- `pg-chat-memory.spec.ts` — pass a mock `Db` whose query-builder methods are
-  Jest mocks. Assert `load` issues the ordered/limited query and reverses the
-  rows; `append` maps `ChatMessage` fields to row values and no-ops on an empty
-  array.
+- `pg-chat-memory.spec.ts` — pass a fake `DbConnection` whose `db` query-builder
+  methods are Jest mocks. Assert `load` issues the ordered/limited query and
+  reverses the rows; `append` maps `role`/`content` to row values and no-ops on
+  an empty array.
 - `context.spec.ts` — extend with a case for `get()` delegating to
   `moduleRef.get` with `{ strict: false }`.
 
@@ -435,3 +459,8 @@ user does runtime verification.
 - Streaming responses.
 - Per-call (model/tool) trace steps — the agent is a single trace step.
 - Memory summarization/compaction — fixed 20-message window.
+- Persisting tool-call / tool-result messages — memory keeps only final
+  human/AI text.
+- Message-fragment merging — treating consecutive user messages that form one
+  intent ("how is the weather" + "in yangon?") as a single logical message. A
+  future round; this round = one user message per turn.
