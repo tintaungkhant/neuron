@@ -26,8 +26,9 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
 
     const history = memory ? await memory.load(payload.sessionId) : [];
     const userMsg: ChatMessage = { role: 'user', content: payload.input };
-    const turnMessages: ChatMessage[] = [userMsg];
 
+    // Working list — the model needs tool-call / tool-result messages within
+    // this run. They are scratch: never returned, never persisted.
     const messages: ChatMessage[] = [];
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -40,16 +41,15 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
       parameters: t.parameters,
     }));
 
-    let answer: string | undefined;
+    let finalAssistant: ChatMessage | undefined;
 
     for (let step = 0; step < maxSteps; step++) {
       const res = await chatModel.complete({ messages, tools: toolSpecs });
       const assistantMsg = res.message;
       messages.push(assistantMsg);
-      turnMessages.push(assistantMsg);
 
       if (!assistantMsg.toolCalls?.length) {
-        answer = assistantMsg.content;
+        finalAssistant = assistantMsg;
         break;
       }
 
@@ -59,26 +59,30 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
           throw new Error(`AiAgentNode: unknown tool "${call.name}"`);
         }
         const result = await tool.execute(call.arguments);
-        const toolMsg: ChatMessage = {
+        messages.push({
           role: 'tool',
           toolCallId: call.id,
           content: JSON.stringify(result),
-        };
-        messages.push(toolMsg);
-        turnMessages.push(toolMsg);
+        });
       }
     }
 
-    if (answer === undefined) {
+    if (!finalAssistant) {
       throw new Error(
         `AiAgentNode: exceeded maxSteps (${maxSteps}) without a final answer`,
       );
     }
 
+    // The clean turn — final human + AI text only. Tool messages stay scratch.
+    const turn: ChatMessage[] = [
+      userMsg,
+      { role: 'assistant', content: finalAssistant.content },
+    ];
+
     if (memory) {
-      await memory.append(payload.sessionId, turnMessages);
+      await memory.append(payload.sessionId, turn);
     }
 
-    return { output: answer, messages: turnMessages };
+    return { output: finalAssistant.content, messages: turn };
   }
 }

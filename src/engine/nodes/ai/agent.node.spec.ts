@@ -190,4 +190,31 @@ describe('AiAgentNode — tools', () => {
       }),
     ).rejects.toThrow(/unknown tool "mystery"/);
   });
+
+  it('persists only the clean user+assistant turn, not tool messages', async () => {
+    const weather = new FakeTool('get_weather', { tempC: 21 });
+    const memory = new FakeMemory();
+    const model = new FakeChatModel([
+      toolCall({
+        id: 'call-1',
+        name: 'get_weather',
+        arguments: { city: 'Yangon' },
+      }),
+      assistant('It is 21C in Yangon.'),
+    ]);
+
+    const out = await new AiAgentNode().execute({
+      payload: { input: 'weather?', sessionId: 's' },
+      chatModel: model,
+      memory,
+      tools: [weather],
+    });
+
+    const cleanTurn = [
+      { role: 'user', content: 'weather?' },
+      { role: 'assistant', content: 'It is 21C in Yangon.' },
+    ];
+    expect(memory.appended).toEqual([{ sessionId: 's', messages: cleanTurn }]);
+    expect(out.messages).toEqual(cleanTurn);
+  });
 });
