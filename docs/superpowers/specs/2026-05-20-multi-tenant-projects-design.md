@@ -1,8 +1,24 @@
 # Multi-Tenant Projects — Design Spec
 
 **Date:** 2026-05-20
-**Status:** Approved for implementation planning
+**Status:** SUPERSEDED (2026-05-21) — registry-based dispatch removed; see banner below.
 **Scope:** Add project (tenant) namespacing on top of the v1.1 workflow engine. Define how projects are organized, configured, routed, and wired into Nest. No DB persistence in this slice; project config sourced from `.env` with project-id prefix.
+
+> **Structure change (2026-05-21):** the registry/dispatch layer described below was dropped in favor of full project isolation. No `ProjectRegistry`, no `PROJECT_REGISTRATIONS`, no project-agnostic trigger controllers, no `src/shared/`. Triggers (HTTP controllers, future cron) are plain NestJS — a framework concern, not the engine's. Current shape:
+> ```
+> src/
+>   engine/
+>     nodes/telegram/         # generic built-in nodes (webhook parser, send-message)
+>   projects/
+>     project.types.ts        # WorkflowInput<TConfig, TPayload> only
+>     demo/
+>       demo.module.ts        # self-contained: imports EngineModule, declares controller + node providers
+>       demo.config.ts        # reads DEMO_* env
+>       controllers/          # plain @Controller, hardcoded /api/demo/... prefix, injects WorkflowEngine
+>       workflows/
+>       nodes/                # project-specific nodes only (empty until needed)
+> ```
+> Each project = one self-contained Nest module imported by `AppModule`. Generic nodes live in `engine/nodes/`. The sections below are kept as historical record of the registry approach.
 
 ## Goal
 

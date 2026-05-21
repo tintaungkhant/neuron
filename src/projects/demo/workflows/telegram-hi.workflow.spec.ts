@@ -1,8 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EngineModule, WorkflowEngine } from '../../../engine';
-import { TelegramInNode } from '../../../shared/nodes/telegram-in.node';
-import { SayHiNode } from '../../../shared/nodes/say-hi.node';
-import type { TelegramUpdate, TriggerInput } from '../../project.types';
+import {
+  TelegramInNode,
+  type TelegramWebhookPayload,
+} from '../../../engine/nodes/telegram/webhook.node';
+import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
+import type { WorkflowInput } from '../../project.types';
 import type { DemoConfig } from '../demo.config';
 import { demoTelegramHiWf } from './telegram-hi.workflow';
 
@@ -14,7 +17,7 @@ describe('demoTelegramHiWf', () => {
   beforeEach(async () => {
     mod = await Test.createTestingModule({
       imports: [EngineModule],
-      providers: [TelegramInNode, SayHiNode],
+      providers: [TelegramInNode, TelegramSendMessageNode],
     }).compile();
     engine = mod.get(WorkflowEngine);
     fetchSpy = jest
@@ -28,9 +31,17 @@ describe('demoTelegramHiWf', () => {
   });
 
   it("replies 'hi' to the incoming chat", async () => {
-    const input: TriggerInput<DemoConfig, TelegramUpdate> = {
+    const input: WorkflowInput<DemoConfig, TelegramWebhookPayload> = {
       project: { id: 'demo', config: { telegramBotToken: 'TESTTOKEN' } },
-      payload: { message: { chat: { id: 99 }, text: 'anything' } },
+      payload: {
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 99, type: 'private' },
+          date: 1700000000,
+          text: 'anything',
+        },
+      },
     };
 
     const { trace } = await engine.run(demoTelegramHiWf, input);
@@ -41,7 +52,10 @@ describe('demoTelegramHiWf', () => {
       name: 'TelegramInNode',
       status: 'ok',
     });
-    expect(trace.steps[1]).toMatchObject({ name: 'SayHiNode', status: 'ok' });
+    expect(trace.steps[1]).toMatchObject({
+      name: 'TelegramSendMessageNode',
+      status: 'ok',
+    });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];

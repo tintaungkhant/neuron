@@ -1,17 +1,20 @@
 import type { WorkflowFn } from '../../../engine';
-import { TelegramInNode } from '../../../shared/nodes/telegram-in.node';
-import { SayHiNode } from '../../../shared/nodes/say-hi.node';
-import type { TelegramUpdate, TriggerInput } from '../../project.types';
+import {
+  TelegramInNode,
+  type TelegramWebhookPayload,
+} from '../../../engine/nodes/telegram/webhook.node';
+import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
+import type { WorkflowInput } from '../../project.types';
 import type { DemoConfig } from '../demo.config';
 
 export const demoTelegramHiWf: WorkflowFn<
-  TriggerInput<DemoConfig, TelegramUpdate>,
+  WorkflowInput<DemoConfig, TelegramWebhookPayload>,
   void
 > = async function demoTelegramHiWf(input, ctx) {
   const parsed = await ctx.run(TelegramInNode, input.payload);
-  await ctx.run(SayHiNode, {
+  await ctx.run(TelegramSendMessageNode, {
     botToken: input.project.config.telegramBotToken,
-    chatId: parsed.chatId,
+    chatId: parsed.chat.id,
     text: 'hi',
   });
 };

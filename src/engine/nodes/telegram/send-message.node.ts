@@ -1,17 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Node } from '../../engine';
+import { Node } from '../../node';
 
-export type SayHiInput = {
+export type TelegramSendMessageInput = {
   botToken: string;
   chatId: number;
   text: string;
 };
 
 @Injectable()
-export class SayHiNode extends Node<SayHiInput, void> {
-  private readonly logger = new Logger(SayHiNode.name);
+export class TelegramSendMessageNode extends Node<
+  TelegramSendMessageInput,
+  void
+> {
+  private readonly logger = new Logger(TelegramSendMessageNode.name);
 
-  async execute(input: SayHiInput): Promise<void> {
+  async execute(input: TelegramSendMessageInput): Promise<void> {
     const url = `https://api.telegram.org/bot${input.botToken}/sendMessage`;
     const res = await fetch(url, {
       method: 'POST',
@@ -24,6 +27,6 @@ export class SayHiNode extends Node<SayHiInput, void> {
       throw new Error(`sendMessage failed: ${res.status} ${body}`);
     }
 
-    this.logger.log(`replied to chat ${input.chatId}: "${input.text}"`);
+    this.logger.log(`sent to chat ${input.chatId}: "${input.text}"`);
   }
 }

@@ -1,6 +1,6 @@
-import { SayHiNode } from './say-hi.node';
+import { TelegramSendMessageNode } from './send-message.node';
 
-describe('SayHiNode', () => {
+describe('TelegramSendMessageNode', () => {
   let fetchSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -13,7 +13,7 @@ describe('SayHiNode', () => {
 
   it('POSTs to the Telegram sendMessage endpoint with chat_id and text', async () => {
     fetchSpy.mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
-    const node = new SayHiNode();
+    const node = new TelegramSendMessageNode();
     await node.execute({ botToken: 'abc123', chatId: 42, text: 'hi' });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -29,7 +29,7 @@ describe('SayHiNode', () => {
 
   it('throws when sendMessage returns non-2xx', async () => {
     fetchSpy.mockResolvedValue(new Response('forbidden', { status: 403 }));
-    const node = new SayHiNode();
+    const node = new TelegramSendMessageNode();
     await expect(
       node.execute({ botToken: 't', chatId: 1, text: 'x' }),
     ).rejects.toThrow(/sendMessage failed: 403 forbidden/);
