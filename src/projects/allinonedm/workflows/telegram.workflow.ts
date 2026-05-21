@@ -1,4 +1,9 @@
-import { AiAgentNode, OpenRouterChatModel, type WorkflowFn } from '../../../engine';
+import {
+  AiAgentNode,
+  OpenRouterChatModel,
+  PgChatMemory,
+  type WorkflowFn,
+} from '../../../engine';
 import {
   TelegramWebhookNode,
   type TelegramWebhookPayload,
@@ -15,9 +20,13 @@ export const telegramWorkflow: WorkflowFn<
   if (!parsed.text) return;
 
   const agent = await ctx.run(AiAgentNode, {
-    payload: { input: parsed.text, sessionId: String(parsed.chat.id) },
+    payload: {
+      input: parsed.text,
+      sessionId: `${input.project.id}:${parsed.chat.id}`,
+    },
     systemPrompt: 'You are a helpful assistant.',
     chatModel: ctx.get(OpenRouterChatModel),
+    memory: ctx.get(PgChatMemory),
     tools: [],
   });
 

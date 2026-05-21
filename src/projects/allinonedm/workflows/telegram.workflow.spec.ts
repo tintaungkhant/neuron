@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { EngineModule, WorkflowEngine } from '../../../engine';
+import { EngineModule, WorkflowEngine, PgChatMemory } from '../../../engine';
+import type { ChatMemory } from '../../../engine';
 import {
   TelegramWebhookNode,
   type TelegramWebhookPayload,
@@ -13,13 +14,21 @@ describe('telegramWorkflow', () => {
   let mod: TestingModule;
   let engine: WorkflowEngine;
   let fetchSpy: jest.SpyInstance;
+  let memory: jest.Mocked<ChatMemory>;
 
   beforeEach(async () => {
     process.env.OPENROUTER_API_KEY = 'test-key';
+    memory = {
+      load: jest.fn().mockResolvedValue([]),
+      append: jest.fn().mockResolvedValue(undefined),
+    };
     mod = await Test.createTestingModule({
       imports: [EngineModule],
       providers: [TelegramWebhookNode, TelegramSendMessageNode],
-    }).compile();
+    })
+      .overrideProvider(PgChatMemory)
+      .useValue(memory)
+      .compile();
     engine = mod.get(WorkflowEngine);
 
     fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((input) => {
@@ -78,6 +87,29 @@ describe('telegramWorkflow', () => {
     ).toEqual({ chat_id: 555, text: 'agent reply' });
   });
 
+  it('uses a project-namespaced sessionId for memory', async () => {
+    const input: WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload> = {
+      project: { id: 'allinonedm', config: { telegramBotToken: 'BOTTOKEN' } },
+      payload: {
+        update_id: 1,
+        message: {
+          message_id: 5,
+          chat: { id: 555, type: 'private' },
+          date: 1700000000,
+          text: 'hello bot',
+        },
+      },
+    };
+
+    await engine.run(telegramWorkflow, input);
+
+    expect(memory.load).toHaveBeenCalledWith('allinonedm:555');
+    expect(memory.append).toHaveBeenCalledWith('allinonedm:555', [
+      { role: 'user', content: 'hello bot' },
+      { role: 'assistant', content: 'agent reply' },
+    ]);
+  });
+
   it('ignores updates with no text', async () => {
     const input: WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload> = {
       project: { id: 'allinonedm', config: { telegramBotToken: 'BOTTOKEN' } },
@@ -95,5 +127,6 @@ describe('telegramWorkflow', () => {
 
     expect(trace.steps.map((s) => s.name)).toEqual(['TelegramWebhookNode']);
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(memory.load).not.toHaveBeenCalled();
   });
 });
