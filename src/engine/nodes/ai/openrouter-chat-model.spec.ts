@@ -22,6 +22,16 @@ describe('OpenRouterChatModel', () => {
     });
   }
 
+  interface OpenAiRequestBody {
+    model: string;
+    messages: unknown[];
+    tools?: unknown[];
+  }
+
+  function parseBody(init: RequestInit): OpenAiRequestBody {
+    return JSON.parse(init.body as string) as OpenAiRequestBody;
+  }
+
   it('POSTs messages and tools mapped to the OpenAI shape', async () => {
     fetchSpy.mockResolvedValue(
       okResponse({ role: 'assistant', content: 'hi' }),
@@ -50,7 +60,7 @@ describe('OpenRouterChatModel', () => {
       authorization: 'Bearer test-key',
       'content-type': 'application/json',
     });
-    const body = JSON.parse(init.body as string);
+    const body = parseBody(init);
     expect(body.model).toBe('anthropic/claude-3.5-sonnet');
     expect(body.messages).toEqual([
       { role: 'user', content: 'hello' },
@@ -121,6 +131,6 @@ describe('OpenRouterChatModel', () => {
 
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(init.headers).toMatchObject({ authorization: 'Bearer k2' });
-    expect(JSON.parse(init.body as string).model).toBe('meta-llama/llama-3');
+    expect(parseBody(init).model).toBe('meta-llama/llama-3');
   });
 });

@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EngineModule, WorkflowEngine, PgChatMemory } from '../../../engine';
-import type { ChatMemory } from '../../../engine';
 import {
   TelegramWebhookNode,
   type TelegramWebhookPayload,
@@ -10,11 +9,17 @@ import type { WorkflowInput } from '../../project.types';
 import type { AllInOneDMConfig } from '../allinonedm.config';
 import { telegramWorkflow } from './telegram.workflow';
 
+function urlOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
 describe('telegramWorkflow', () => {
   let mod: TestingModule;
   let engine: WorkflowEngine;
   let fetchSpy: jest.SpyInstance;
-  let memory: jest.Mocked<ChatMemory>;
+  let memory: { load: jest.Mock; append: jest.Mock };
 
   beforeEach(async () => {
     memory = {
@@ -31,7 +36,7 @@ describe('telegramWorkflow', () => {
     engine = mod.get(WorkflowEngine);
 
     fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((input) => {
-      const url = String(input);
+      const url = urlOf(input);
       if (url.startsWith('https://openrouter.ai/')) {
         return Promise.resolve(
           new Response(
@@ -83,13 +88,15 @@ describe('telegramWorkflow', () => {
       'TelegramSendMessageNode',
     ]);
 
-    const telegramCall = fetchSpy.mock.calls.find(([u]) =>
-      String(u).includes('api.telegram.org'),
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
+    const telegramCall = calls.find(([u]) =>
+      urlOf(u).includes('api.telegram.org'),
     );
     expect(telegramCall).toBeDefined();
-    expect(
-      JSON.parse((telegramCall![1] as RequestInit).body as string),
-    ).toEqual({ chat_id: 555, text: 'agent reply' });
+    expect(JSON.parse(telegramCall![1].body as string)).toEqual({
+      chat_id: 555,
+      text: 'agent reply',
+    });
   });
 
   it('uses a project-namespaced sessionId for memory', async () => {
