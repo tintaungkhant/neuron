@@ -45,11 +45,12 @@ Jest unit config lives inline in `package.json` (rootDir = `src`, regex = `.*\.s
 Expected keys:
 
 - `DEMO_TELEGRAM_BOT_TOKEN`, `ALLINONEDM_TELEGRAM_BOT_TOKEN` — per-project Telegram bot tokens.
+- `ALLINONEDM_OPENROUTER_API_KEY`, `ALLINONEDM_OPENROUTER_MODEL` — per-project OpenRouter credentials/model for the `allinonedm` agent.
 - `DATABASE_URL` — Postgres connection string for chat memory.
-- `OPENROUTER_API_KEY` — required by the AI agent's chat model (read lazily, only when `complete()` runs).
-- `OPENROUTER_MODEL` — optional, defaults to `openai/gpt-4o-mini`.
 
-`.env` is gitignored. Tests set the env vars they need themselves; provider constructors never read env, so importing `EngineModule` in a spec never requires real credentials.
+Env is per-project: each project's `*.config.ts` reads its own keys (`requireEnv`) at import time and packs them into the project config object. `OpenRouterChatModel` never reads env — it takes `{ apiKey, model }` in its constructor, supplied from project config.
+
+`.env` is gitignored. Tests set the env vars they need themselves; engine providers never read env, so importing `EngineModule` in a spec never requires real credentials.
 
 ## Architecture
 
@@ -61,7 +62,7 @@ Expected keys:
   - `ctx.runWorkflow(wf, input)` — run a sub-workflow with a nested trace.
   - `ctx.get(Type)` — resolve any DI provider (used to hand provider instances into a node's input).
 - A **node** extends the abstract `Node<I, O>` with one method, `execute(input): Promise<O>`. Nodes are single-shot: no `ctx`, cannot call other nodes. Orchestration belongs in workflows.
-- `EngineModule` provides + exports `WorkflowEngine` and the built-in AI providers (`AiAgentNode`, `OpenRouterChatModel`, `PgChatMemory`) and imports `DbModule`. Every project module imports `EngineModule`.
+- `EngineModule` provides + exports `WorkflowEngine` and the DI-backed AI providers (`AiAgentNode`, `PgChatMemory`) and imports `DbModule`. Every project module imports `EngineModule`. `OpenRouterChatModel` is *not* a DI provider — it is a plain class a workflow constructs with per-project config.
 
 ### Built-in nodes (`src/engine/nodes/`)
 
@@ -70,8 +71,8 @@ Generic, reusable nodes. `telegram/` — `TelegramWebhookNode` (parses an update
 ### AI agent (`src/engine/nodes/ai/`, ports in `src/engine/ai/`)
 
 - `AiAgentNode` runs an LLM tool-calling loop: load memory → build messages → call the chat model → run any requested tools and loop → return the final answer. `maxSteps` (default 6) guards runaway loops.
-- The agent's three collaborators are **typed ports**, not engine `Node`s: `ChatModel`, `ChatMemory`, `AgentTool` (interfaces in `src/engine/ai/`). They are passed in the agent's input — a workflow resolves concrete implementations with `ctx.get(...)` and hands them over. This keeps `Node` single-shot while letting the agent loop.
-- `OpenRouterChatModel` — `ChatModel` via raw `fetch` to OpenRouter's OpenAI-compatible endpoint (no SDK). `PgChatMemory` — `ChatMemory` over Postgres.
+- The agent's three collaborators are **typed ports**, not engine `Node`s: `ChatModel`, `ChatMemory`, `AgentTool` (interfaces in `src/engine/ai/`). They are passed in the agent's input — a workflow supplies concrete implementations and hands them over. This keeps `Node` single-shot while letting the agent loop.
+- `OpenRouterChatModel` — `ChatModel` via raw `fetch` to OpenRouter's OpenAI-compatible endpoint (no SDK). It is a plain class: a workflow does `new OpenRouterChatModel({ apiKey, model })` with values from project config — it reads no env. `PgChatMemory` — `ChatMemory` over Postgres, resolved via `ctx.get(PgChatMemory)`.
 - **Memory stores only the final human + AI text of each turn.** Intermediate tool-call / tool-result messages are run-internal scratch — never persisted. Stored history is therefore flat `user`/`assistant` rows.
 
 ### Database (`src/engine/db/`)

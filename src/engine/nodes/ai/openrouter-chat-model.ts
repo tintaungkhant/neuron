@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import type {
   ChatCompletionRequest,
   ChatCompletionResult,
@@ -9,12 +8,10 @@ import type {
 import type { ToolSpec } from '../../ai/tool';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
 
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`missing env ${name}`);
-  return v;
+export interface OpenRouterChatModelOptions {
+  apiKey: string;
+  model: string;
 }
 
 interface OpenAiToolCall {
@@ -73,20 +70,18 @@ function toOpenAiTool(spec: ToolSpec) {
   };
 }
 
-@Injectable()
 export class OpenRouterChatModel implements ChatModel {
-  async complete(req: ChatCompletionRequest): Promise<ChatCompletionResult> {
-    const apiKey = requireEnv('OPENROUTER_API_KEY');
-    const model = process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL;
+  constructor(private readonly opts: OpenRouterChatModelOptions) {}
 
+  async complete(req: ChatCompletionRequest): Promise<ChatCompletionResult> {
     const res = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${apiKey}`,
+        authorization: `Bearer ${this.opts.apiKey}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model,
+        model: this.opts.model,
         messages: req.messages.map(toOpenAiMessage),
         tools: req.tools?.map(toOpenAiTool),
       }),

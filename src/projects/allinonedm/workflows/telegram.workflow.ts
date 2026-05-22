@@ -25,7 +25,10 @@ export const telegramWorkflow: WorkflowFn<
       sessionId: `${input.project.id}:${parsed.chat.id}`,
     },
     systemPrompt: 'You are a helpful assistant.',
-    chatModel: ctx.get(OpenRouterChatModel),
+    chatModel: new OpenRouterChatModel({
+      apiKey: input.project.config.openRouterApiKey,
+      model: input.project.config.openRouterModel,
+    }),
     memory: ctx.get(PgChatMemory),
     tools: [],
   });

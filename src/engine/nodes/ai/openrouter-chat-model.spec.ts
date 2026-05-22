@@ -5,15 +5,16 @@ describe('OpenRouterChatModel', () => {
   let fetchSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    process.env.OPENROUTER_API_KEY = 'test-key';
     fetchSpy = jest.spyOn(global, 'fetch');
   });
 
   afterEach(() => {
     fetchSpy.mockRestore();
-    delete process.env.OPENROUTER_API_KEY;
-    delete process.env.OPENROUTER_MODEL;
   });
+
+  function model(modelName = 'openai/gpt-4o-mini') {
+    return new OpenRouterChatModel({ apiKey: 'test-key', model: modelName });
+  }
 
   function okResponse(message: unknown): Response {
     return new Response(JSON.stringify({ choices: [{ message }] }), {
@@ -22,8 +23,9 @@ describe('OpenRouterChatModel', () => {
   }
 
   it('POSTs messages and tools mapped to the OpenAI shape', async () => {
-    fetchSpy.mockResolvedValue(okResponse({ role: 'assistant', content: 'hi' }));
-    process.env.OPENROUTER_MODEL = 'anthropic/claude-3.5-sonnet';
+    fetchSpy.mockResolvedValue(
+      okResponse({ role: 'assistant', content: 'hi' }),
+    );
     const req: ChatCompletionRequest = {
       messages: [
         { role: 'user', content: 'hello' },
@@ -39,7 +41,7 @@ describe('OpenRouterChatModel', () => {
       ],
     };
 
-    await new OpenRouterChatModel().complete(req);
+    await model('anthropic/claude-3.5-sonnet').complete(req);
 
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
@@ -92,7 +94,7 @@ describe('OpenRouterChatModel', () => {
       }),
     );
 
-    const out = await new OpenRouterChatModel().complete({ messages: [] });
+    const out = await model().complete({ messages: [] });
 
     expect(out.message).toEqual({
       role: 'assistant',
@@ -104,19 +106,21 @@ describe('OpenRouterChatModel', () => {
   it('throws when OpenRouter returns a non-OK status', async () => {
     fetchSpy.mockResolvedValue(new Response('rate limited', { status: 429 }));
 
-    await expect(
-      new OpenRouterChatModel().complete({ messages: [] }),
-    ).rejects.toThrow(/OpenRouter 429: rate limited/);
+    await expect(model().complete({ messages: [] })).rejects.toThrow(
+      /OpenRouter 429: rate limited/,
+    );
   });
 
-  it('uses the default model when OPENROUTER_MODEL is unset', async () => {
+  it('uses the apiKey and model passed to the constructor', async () => {
     fetchSpy.mockResolvedValue(okResponse({ role: 'assistant', content: 'x' }));
 
-    await new OpenRouterChatModel().complete({ messages: [] });
+    await new OpenRouterChatModel({
+      apiKey: 'k2',
+      model: 'meta-llama/llama-3',
+    }).complete({ messages: [] });
 
-    const body = JSON.parse(
-      (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
-    );
-    expect(body.model).toBe('openai/gpt-4o-mini');
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toMatchObject({ authorization: 'Bearer k2' });
+    expect(JSON.parse(init.body as string).model).toBe('meta-llama/llama-3');
   });
 });

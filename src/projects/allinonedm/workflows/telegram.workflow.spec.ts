@@ -17,7 +17,6 @@ describe('telegramWorkflow', () => {
   let memory: jest.Mocked<ChatMemory>;
 
   beforeEach(async () => {
-    process.env.OPENROUTER_API_KEY = 'test-key';
     memory = {
       load: jest.fn().mockResolvedValue([]),
       append: jest.fn().mockResolvedValue(undefined),
@@ -51,13 +50,19 @@ describe('telegramWorkflow', () => {
 
   afterEach(async () => {
     fetchSpy.mockRestore();
-    delete process.env.OPENROUTER_API_KEY;
     await mod.close();
   });
 
   it('runs webhook -> agent -> send and replies with the agent output', async () => {
     const input: WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload> = {
-      project: { id: 'allinonedm', config: { telegramBotToken: 'BOTTOKEN' } },
+      project: {
+        id: 'allinonedm',
+        config: {
+          telegramBotToken: 'BOTTOKEN',
+          openRouterApiKey: 'test-key',
+          openRouterModel: 'openai/gpt-4o-mini',
+        },
+      },
       payload: {
         update_id: 1,
         message: {
@@ -89,7 +94,14 @@ describe('telegramWorkflow', () => {
 
   it('uses a project-namespaced sessionId for memory', async () => {
     const input: WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload> = {
-      project: { id: 'allinonedm', config: { telegramBotToken: 'BOTTOKEN' } },
+      project: {
+        id: 'allinonedm',
+        config: {
+          telegramBotToken: 'BOTTOKEN',
+          openRouterApiKey: 'test-key',
+          openRouterModel: 'openai/gpt-4o-mini',
+        },
+      },
       payload: {
         update_id: 1,
         message: {
@@ -112,7 +124,14 @@ describe('telegramWorkflow', () => {
 
   it('ignores updates with no text', async () => {
     const input: WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload> = {
-      project: { id: 'allinonedm', config: { telegramBotToken: 'BOTTOKEN' } },
+      project: {
+        id: 'allinonedm',
+        config: {
+          telegramBotToken: 'BOTTOKEN',
+          openRouterApiKey: 'test-key',
+          openRouterModel: 'openai/gpt-4o-mini',
+        },
+      },
       payload: {
         update_id: 2,
         message: {

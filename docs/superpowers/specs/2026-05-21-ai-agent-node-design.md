@@ -1,6 +1,6 @@
 # AI Agent Node — Design
 
-**Status:** APPROVED (2026-05-21) — memory section revised 2026-05-21
+**Status:** APPROVED (2026-05-21) — memory + chat-model config revised 2026-05-22
 **Depends on:** the code-defined workflow engine (`src/engine/`).
 
 > **Memory revision (2026-05-21):** Memory persists only the *final* human and
@@ -8,6 +8,16 @@
 > messages. Those are run-internal scratch. This keeps stored history flat
 > (`user`/`assistant` text only), removes the tool-pair slicing hazard, and
 > simplifies the schema (no `jsonb` columns).
+
+> **Chat-model config revision (2026-05-22):** `OpenRouterChatModel` reads no
+> env. It is a plain class — not a NestJS provider — constructed with
+> `{ apiKey, model }`. Credentials and model id live in the project config; the
+> `allinonedm` config reads `ALLINONEDM_OPENROUTER_API_KEY` /
+> `ALLINONEDM_OPENROUTER_MODEL` and the workflow does
+> `new OpenRouterChatModel(...)`. The sections below that show
+> `requireEnv('OPENROUTER_API_KEY')`, `OpenRouterChatModel` as an `@Injectable`
+> provider, or `ctx.get(OpenRouterChatModel)` are superseded by this note.
+> `PgChatMemory` is unchanged — still a DI provider resolved via `ctx.get`.
 
 ## Goal
 
