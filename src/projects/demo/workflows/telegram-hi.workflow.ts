@@ -13,6 +13,7 @@ import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-mes
 import { demoConfig } from '../demo.config';
 import { demoDb } from '../db/client';
 import { chats } from '../db/schema';
+import { CreateOrderTool } from '../tools/create-order.tool';
 import { GetFaqsTool } from '../tools/get-faqs.tool';
 import { GetPaymentMethodsTool } from '../tools/get-payment-methods.tool';
 import { GetServicesTool } from '../tools/get-services.tool';
@@ -25,6 +26,7 @@ Tool usage:
 - Services / pricing: call get_services to fetch the live catalog. Quote names and prices only from its results — never invent a service or price. Before quoting, gather the items listed in the service's "requirementsFromCustomer" field.
 - Payment: call get_payment_methods when the customer asks how to pay, which methods are accepted, or is about to send a payment. Quote account names and account numbers only from its results.
 - General questions / advice: when the user asks a general question or seems unsure, call get_faqs first and prefer the matching FAQ answer over your own knowledge. If no FAQ matches, answer briefly from context.
+- Placing an order: once the customer has chosen a service, you have collected every item listed in that service's requirementsFromCustomer field, and the customer has agreed to proceed, call create_order with a summary containing the chosen service, every requirement collected, the agreed price, and the payment method if discussed. Do not call create_order before all requirements are collected and confirmed.
 
 If the customer is unsure which service fits, ask a few short questions about their goals and recommend from the catalog.`;
 
@@ -60,6 +62,7 @@ export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
         new GetServicesTool(),
         new GetPaymentMethodsTool(),
         new GetFaqsTool(),
+        new CreateOrderTool({ chatExtId: parsed.chat.id }),
       ],
     });
 
