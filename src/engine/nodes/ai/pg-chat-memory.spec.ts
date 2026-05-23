@@ -44,7 +44,7 @@ describe('PgChatMemory.load', () => {
     const from = jest.fn().mockReturnValue({ where });
     mockDb.select.mockReturnValue({ from });
 
-    const out = await new PgChatMemory().load('s');
+    const out = await new PgChatMemory({ sessionId: 's' }).load();
 
     expect(mockDb.select).toHaveBeenCalled();
     expect(limit).toHaveBeenCalledWith(20);
@@ -52,6 +52,18 @@ describe('PgChatMemory.load', () => {
       { role: 'user', content: 'first' },
       { role: 'assistant', content: 'second' },
     ]);
+  });
+
+  it('honors a custom windowSize passed to the constructor', async () => {
+    const limit = jest.fn().mockResolvedValue([]);
+    const orderBy = jest.fn().mockReturnValue({ limit });
+    const where = jest.fn().mockReturnValue({ orderBy });
+    const from = jest.fn().mockReturnValue({ where });
+    mockDb.select.mockReturnValue({ from });
+
+    await new PgChatMemory({ sessionId: 's', windowSize: 5 }).load();
+
+    expect(limit).toHaveBeenCalledWith(5);
   });
 });
 
@@ -64,7 +76,7 @@ describe('PgChatMemory.append', () => {
       { role: 'user', content: 'hi' },
       { role: 'assistant', content: 'hello' },
     ];
-    await new PgChatMemory().append('chat-7', messages);
+    await new PgChatMemory({ sessionId: 'chat-7' }).append(messages);
 
     expect(mockDb.insert).toHaveBeenCalled();
     expect(values).toHaveBeenCalledWith([
@@ -74,7 +86,7 @@ describe('PgChatMemory.append', () => {
   });
 
   it('does nothing when there are no messages', async () => {
-    await new PgChatMemory().append('s', []);
+    await new PgChatMemory({ sessionId: 's' }).append([]);
 
     expect(mockDb.insert).not.toHaveBeenCalled();
   });

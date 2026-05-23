@@ -21,15 +21,15 @@ class FakeChatModel implements ChatModel {
 }
 
 class FakeMemory implements ChatMemory {
-  readonly loaded: string[] = [];
-  readonly appended: { sessionId: string; messages: ChatMessage[] }[] = [];
+  loadCount = 0;
+  readonly appended: ChatMessage[][] = [];
   constructor(private readonly history: ChatMessage[] = []) {}
-  load(sessionId: string): Promise<ChatMessage[]> {
-    this.loaded.push(sessionId);
+  load(): Promise<ChatMessage[]> {
+    this.loadCount++;
     return Promise.resolve(this.history);
   }
-  append(sessionId: string, messages: ChatMessage[]): Promise<void> {
-    this.appended.push({ sessionId, messages });
+  append(messages: ChatMessage[]): Promise<void> {
+    this.appended.push(messages);
     return Promise.resolve();
   }
 }
@@ -66,7 +66,7 @@ describe('AiAgentNode — core', () => {
     const model = new FakeChatModel([assistant('hello there')]);
 
     const out = await new AiAgentNode().execute({
-      payload: { input: 'hi', sessionId: 's1' },
+      input: 'hi',
       chatModel: model,
     });
 
@@ -78,7 +78,7 @@ describe('AiAgentNode — core', () => {
     const model = new FakeChatModel([assistant('ok')]);
 
     await new AiAgentNode().execute({
-      payload: { input: 'question', sessionId: 's1' },
+      input: 'question',
       systemPrompt: 'be brief',
       chatModel: model,
     });
@@ -98,25 +98,22 @@ describe('AiAgentNode — core', () => {
     const model = new FakeChatModel([assistant('final')]);
 
     const out = await new AiAgentNode().execute({
-      payload: { input: 'now', sessionId: 'chat-9' },
+      input: 'now',
       chatModel: model,
       memory,
     });
 
-    expect(memory.loaded).toEqual(['chat-9']);
+    expect(memory.loadCount).toBe(1);
     expect(model.calls[0].messages).toEqual([
       { role: 'user', content: 'earlier' },
       { role: 'assistant', content: 'reply' },
       { role: 'user', content: 'now' },
     ]);
     expect(memory.appended).toEqual([
-      {
-        sessionId: 'chat-9',
-        messages: [
-          { role: 'user', content: 'now' },
-          { role: 'assistant', content: 'final' },
-        ],
-      },
+      [
+        { role: 'user', content: 'now' },
+        { role: 'assistant', content: 'final' },
+      ],
     ]);
     expect(out.messages).toEqual([
       { role: 'user', content: 'now' },
@@ -138,7 +135,7 @@ describe('AiAgentNode — tools', () => {
     ]);
 
     const out = await new AiAgentNode().execute({
-      payload: { input: 'weather?', sessionId: 's' },
+      input: 'weather?',
       chatModel: model,
       tools: [weather],
     });
@@ -169,7 +166,7 @@ describe('AiAgentNode — tools', () => {
 
     await expect(
       new AiAgentNode().execute({
-        payload: { input: 'go', sessionId: 's' },
+        input: 'go',
         chatModel: model,
         tools: [spin],
         maxSteps: 3,
@@ -184,7 +181,7 @@ describe('AiAgentNode — tools', () => {
 
     await expect(
       new AiAgentNode().execute({
-        payload: { input: 'go', sessionId: 's' },
+        input: 'go',
         chatModel: model,
         tools: [],
       }),
@@ -204,7 +201,7 @@ describe('AiAgentNode — tools', () => {
     ]);
 
     const out = await new AiAgentNode().execute({
-      payload: { input: 'weather?', sessionId: 's' },
+      input: 'weather?',
       chatModel: model,
       memory,
       tools: [weather],
@@ -214,7 +211,7 @@ describe('AiAgentNode — tools', () => {
       { role: 'user', content: 'weather?' },
       { role: 'assistant', content: 'It is 21C in Yangon.' },
     ];
-    expect(memory.appended).toEqual([{ sessionId: 's', messages: cleanTurn }]);
+    expect(memory.appended).toEqual([cleanTurn]);
     expect(out.messages).toEqual(cleanTurn);
   });
 });

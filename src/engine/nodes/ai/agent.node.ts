@@ -5,7 +5,7 @@ import type { ChatMemory } from '../../ai/memory';
 import type { AgentTool, ToolSpec } from '../../ai/tool';
 
 export interface AiAgentInput {
-  payload: { input: string; sessionId: string };
+  input: string;
   systemPrompt?: string;
   chatModel: ChatModel;
   memory?: ChatMemory;
@@ -21,11 +21,11 @@ export interface AiAgentOutput {
 @Injectable()
 export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
   async execute(input: AiAgentInput): Promise<AiAgentOutput> {
-    const { payload, systemPrompt, chatModel, memory, tools } = input;
+    const { systemPrompt, chatModel, memory, tools } = input;
     const maxSteps = input.maxSteps ?? 6;
 
-    const history = memory ? await memory.load(payload.sessionId) : [];
-    const userMsg: ChatMessage = { role: 'user', content: payload.input };
+    const history = memory ? await memory.load() : [];
+    const userMsg: ChatMessage = { role: 'user', content: input.input };
 
     // Working list — the model needs tool-call / tool-result messages within
     // this run. They are scratch: never returned, never persisted.
@@ -80,7 +80,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
     ];
 
     if (memory) {
-      await memory.append(payload.sessionId, turn);
+      await memory.append(turn);
     }
 
     return { output: finalAssistant.content, messages: turn };

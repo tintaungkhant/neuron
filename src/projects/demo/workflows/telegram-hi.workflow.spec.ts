@@ -102,8 +102,9 @@ describe('demoTelegramHiWorkflow', () => {
 
     await engine.run(demoTelegramHiWorkflow, payload);
 
-    expect(memory.load).toHaveBeenCalledWith('demo:99');
-    expect(memory.append).toHaveBeenCalledWith('demo:99', [
+    expect(PgChatMemory).toHaveBeenCalledWith({ sessionId: 'demo:99' });
+    expect(memory.load).toHaveBeenCalledWith();
+    expect(memory.append).toHaveBeenCalledWith([
       { role: 'user', content: 'hello bot' },
       { role: 'assistant', content: 'agent reply' },
     ]);

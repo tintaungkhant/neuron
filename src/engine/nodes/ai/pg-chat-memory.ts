@@ -4,16 +4,29 @@ import type { ChatMemory } from '../../ai/memory';
 import { db } from '../../db/client';
 import { agentMessages } from '../../db/schema';
 
-const WINDOW_SIZE = 20;
+const DEFAULT_WINDOW_SIZE = 20;
+
+export type PgChatMemoryOptions = {
+  sessionId: string;
+  windowSize?: number;
+};
 
 export class PgChatMemory implements ChatMemory {
-  async load(sessionId: string): Promise<ChatMessage[]> {
+  private readonly sessionId: string;
+  private readonly windowSize: number;
+
+  constructor(opts: PgChatMemoryOptions) {
+    this.sessionId = opts.sessionId;
+    this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE;
+  }
+
+  async load(): Promise<ChatMessage[]> {
     const rows = await db
       .select()
       .from(agentMessages)
-      .where(eq(agentMessages.sessionId, sessionId))
+      .where(eq(agentMessages.sessionId, this.sessionId))
       .orderBy(desc(agentMessages.id))
-      .limit(WINDOW_SIZE);
+      .limit(this.windowSize);
     return rows
       .reverse() // oldest-first
       .map((r) => ({
@@ -22,11 +35,11 @@ export class PgChatMemory implements ChatMemory {
       }));
   }
 
-  async append(sessionId: string, messages: ChatMessage[]): Promise<void> {
+  async append(messages: ChatMessage[]): Promise<void> {
     if (messages.length === 0) return;
     await db.insert(agentMessages).values(
       messages.map((m) => ({
-        sessionId,
+        sessionId: this.sessionId,
         role: m.role,
         content: m.content,
       })),
