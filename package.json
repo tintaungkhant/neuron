@@ -1,7 +1,7 @@
 {
-  "name": "ai-worflow-engine",
+  "name": "neuron",
   "version": "0.0.1",
-  "description": "",
+  "description": "Neuron — a code-first AI workflow engine on NestJS.",
   "author": "",
   "private": true,
   "license": "UNLICENSED",

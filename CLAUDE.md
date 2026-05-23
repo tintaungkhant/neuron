@@ -4,14 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-An AI workflow engine on NestJS 11. Two layers exist:
+**Neuron** — an AI workflow engine on NestJS 11. Two layers exist:
 
 - **Engine** (`src/engine/`) — runs code-defined workflows, ships built-in nodes, including an AI agent node with an OpenRouter chat model and Postgres-backed memory.
 - **Projects** (`src/projects/`) — self-contained feature modules (currently `demo`) that wire workflows to HTTP triggers. Projects may own their own DB.
 
 `AppController` / `AppService` are leftover scaffold placeholders — not used by the engine or projects. New domain code goes in dedicated Nest modules, never bolted onto `AppModule`.
-
-Note: package name is `ai-worflow-engine` (missing the `k`). Don't "fix" it without checking — it may already be referenced elsewhere.
 
 ## Commands
 
