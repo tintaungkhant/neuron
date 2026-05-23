@@ -60,9 +60,9 @@ Env is per-project: each project's `*.config.ts` reads its own keys (`requireEnv
 - `wf` (`Context`) is the workflow's handle to the engine:
   - `wf.run(NodeClass, input)` — resolve a node via Nest DI (`ModuleRef`, non-strict) and execute it; the call is recorded as a `Trace` step.
   - `wf.runWorkflow(subWf, input)` — run a sub-workflow with a nested trace.
-  - `wf` has no DI accessor. A workflow never reaches into the container — DI-managed collaborators (e.g. `PgChatMemory`) enter via a **workflow factory**: the project's controller injects them and calls a `makeXxxWorkflow(deps)` factory that closes over the deps and returns a `WorkflowFn`. Trigger data (payload + project config) is the workflow's `input`; runtime collaborators are not.
+  - `wf` has no DI accessor. A workflow never reaches into the container. Per-project trigger data (payload + config) is the workflow's `input`. Collaborators a node needs at call time (chat model, memory, tools) are plain classes the workflow `new`s up inline — no DI, no factories.
 - A **node** extends the abstract `Node<I, O>` with one method, `execute(input): Promise<O>`. Nodes are single-shot: no `wf`, cannot call other nodes. Orchestration belongs in workflows.
-- `EngineModule` provides + exports `WorkflowEngine` and the DI-backed AI providers (`AiAgentNode`, `PgChatMemory`) and imports `DbModule`. Every project module imports `EngineModule`. `OpenRouterChatModel` is *not* a DI provider — it is a plain class a workflow constructs with per-project config.
+- `EngineModule` provides + exports `WorkflowEngine` and `AiAgentNode`, and registers a private `DbShutdown` provider that closes the Postgres pool on app shutdown. Every project module imports `EngineModule`. `OpenRouterChatModel` and `PgChatMemory` are *not* DI providers — they are plain classes a workflow constructs inline.
 
 ### Built-in nodes (`src/engine/nodes/`)
 
@@ -72,12 +72,12 @@ Generic, reusable nodes. `telegram/` — `TelegramWebhookNode` (parses an update
 
 - `AiAgentNode` runs an LLM tool-calling loop: load memory → build messages → call the chat model → run any requested tools and loop → return the final answer. `maxSteps` (default 6) guards runaway loops.
 - The agent's three collaborators are **typed ports**, not engine `Node`s: `ChatModel`, `ChatMemory`, `AgentTool` (interfaces in `src/engine/ai/`). They are passed in the agent's input — a workflow supplies concrete implementations and hands them over. This keeps `Node` single-shot while letting the agent loop.
-- `OpenRouterChatModel` — `ChatModel` via raw `fetch` to OpenRouter's OpenAI-compatible endpoint (no SDK). It is a plain class: a workflow does `new OpenRouterChatModel({ apiKey, model })` with values from project config — it reads no env. `PgChatMemory` — `ChatMemory` over Postgres; a DI provider, so the project controller injects it and supplies it to the workflow's factory (`makeTelegramWorkflow(memory)`), which closes over it.
+- `OpenRouterChatModel` — `ChatModel` via raw `fetch` to OpenRouter's OpenAI-compatible endpoint (no SDK). Plain class: `new OpenRouterChatModel({ apiKey, model })` with values from project config — reads no env. `PgChatMemory` — `ChatMemory` over Postgres. Also a plain class: `new PgChatMemory()` with no args, resolves the singleton `db` handle internally from `src/engine/db/client.ts`.
 - **Memory stores only the final human + AI text of each turn.** Intermediate tool-call / tool-result messages are run-internal scratch — never persisted. Stored history is therefore flat `user`/`assistant` rows.
 
 ### Database (`src/engine/db/`)
 
-Drizzle ORM + `pg`. `DbConnection` owns the `pg` `Pool`, the Drizzle handle, and closes the pool on shutdown; `DbModule` is `@Global`. Schema in `schema.ts` (`agent_messages`). Migration SQL is generated under `drizzle/` and committed; `drizzle.config.ts` is at the repo root and excluded from the Nest build.
+Drizzle ORM + `pg`. `client.ts` constructs the `pg` `Pool` and Drizzle handle at module load and exports a singleton `db` plus an idempotent `closeDb()`. `DbShutdown` (an `@Injectable()` provider in `EngineModule`) calls `closeDb()` on `beforeApplicationShutdown` — that's the only DI plumbing the DB has. Schema in `schema.ts` (`agent_messages`). Migration SQL is generated under `drizzle/` and committed; `drizzle.config.ts` is at the repo root and excluded from the Nest build.
 
 ### Projects (`src/projects/`)
 

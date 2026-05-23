@@ -1,12 +1,10 @@
 import { Module } from '@nestjs/common';
 import { WorkflowEngine } from './engine';
-import { DbModule } from './db/db.module';
 import { AiAgentNode } from './nodes/ai/agent.node';
-import { PgChatMemory } from './nodes/ai/pg-chat-memory';
+import { DbShutdown } from './db/db-shutdown';
 
 @Module({
-  imports: [DbModule],
-  providers: [WorkflowEngine, AiAgentNode, PgChatMemory],
-  exports: [WorkflowEngine, AiAgentNode, PgChatMemory],
+  providers: [WorkflowEngine, AiAgentNode, DbShutdown],
+  exports: [WorkflowEngine, AiAgentNode],
 })
 export class EngineModule {}
