@@ -2,6 +2,11 @@ jest.mock('../../../engine/nodes/ai/pg-chat-memory', () => ({
   PgChatMemory: jest.fn(),
 }));
 
+jest.mock('../db/client', () => ({
+  demoDb: { select: jest.fn() },
+  closeDemoDb: jest.fn(),
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { EngineModule, WorkflowEngine, PgChatMemory } from '../../../engine';
 import { TelegramWebhookNode } from '../../../engine/nodes/telegram/webhook.node';
@@ -108,6 +113,36 @@ describe('demoTelegramHiWorkflow', () => {
       { role: 'user', content: 'hello bot' },
       { role: 'assistant', content: 'agent reply' },
     ]);
+  });
+
+  it('sends the get_services tool spec and the Better Solutions prompt to OpenRouter', async () => {
+    const payload: TelegramWebhookPayload = {
+      update_id: 1,
+      message: {
+        message_id: 5,
+        chat: { id: 99, type: 'private' },
+        date: 1700000000,
+        text: 'what do you offer?',
+      },
+    };
+
+    await engine.run(demoTelegramHiWorkflow, payload);
+
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
+    const orCall = calls.find(([u]) =>
+      urlOf(u).startsWith('https://openrouter.ai/'),
+    );
+    expect(orCall).toBeDefined();
+    const body = JSON.parse(orCall![1].body as string) as {
+      messages: { role: string; content: string }[];
+      tools?: { type: string; function: { name: string } }[];
+    };
+
+    const system = body.messages.find((m) => m.role === 'system');
+    expect(system?.content).toMatch(/Better Solutions/);
+
+    const toolNames = (body.tools ?? []).map((t) => t.function.name);
+    expect(toolNames).toContain('get_services');
   });
 
   it('ignores updates with no text', async () => {

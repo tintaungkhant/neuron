@@ -3,6 +3,7 @@ export type DemoConfig = {
   telegramBotToken: string;
   openRouterApiKey: string;
   openRouterModel: string;
+  databaseUrl: string;
 };
 
 function requireEnv(name: string): string {
@@ -16,4 +17,5 @@ export const demoConfig: DemoConfig = {
   telegramBotToken: requireEnv('DEMO_TELEGRAM_BOT_TOKEN'),
   openRouterApiKey: requireEnv('DEMO_OPENROUTER_API_KEY'),
   openRouterModel: requireEnv('DEMO_OPENROUTER_MODEL'),
+  databaseUrl: requireEnv('DEMO_DATABASE_URL'),
 };

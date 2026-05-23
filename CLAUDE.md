@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 An AI workflow engine on NestJS 11. Two layers exist:
 
 - **Engine** (`src/engine/`) — runs code-defined workflows, ships built-in nodes, including an AI agent node with an OpenRouter chat model and Postgres-backed memory.
-- **Projects** (`src/projects/`) — self-contained feature modules (`demo`, `allinonedm`) that wire workflows to HTTP triggers.
+- **Projects** (`src/projects/`) — self-contained feature modules (currently `demo`) that wire workflows to HTTP triggers. Projects may own their own DB.
 
 `AppController` / `AppService` are leftover scaffold placeholders — not used by the engine or projects. New domain code goes in dedicated Nest modules, never bolted onto `AppModule`.
 
@@ -32,8 +32,10 @@ pnpm test:watch
 pnpm test:cov
 pnpm test:e2e             # uses test/jest-e2e.json (rootDir = ./test, *.e2e-spec.ts)
 
-pnpm db:generate          # drizzle-kit: regenerate migration SQL from the schema
-pnpm db:migrate           # drizzle-kit: apply migrations to DATABASE_URL
+pnpm db:generate          # drizzle-kit: regenerate engine migration SQL from src/engine/db/schema.ts
+pnpm db:migrate           # drizzle-kit: apply engine migrations to DATABASE_URL
+pnpm db:demo:generate     # demo-project migration SQL from src/projects/demo/db/schema.ts (uses drizzle.demo.config.ts)
+pnpm db:demo:migrate      # apply demo migrations to DEMO_DATABASE_URL
 ```
 
 Jest unit config lives inline in `package.json` (rootDir = `src`, regex = `.*\.spec\.ts$`). E2E config is `test/jest-e2e.json`. They are separate runners — `pnpm test` does NOT pick up e2e specs.
@@ -44,9 +46,10 @@ Jest unit config lives inline in `package.json` (rootDir = `src`, regex = `.*\.s
 
 Expected keys:
 
-- `DEMO_TELEGRAM_BOT_TOKEN`, `ALLINONEDM_TELEGRAM_BOT_TOKEN` — per-project Telegram bot tokens.
-- `ALLINONEDM_OPENROUTER_API_KEY`, `ALLINONEDM_OPENROUTER_MODEL` — per-project OpenRouter credentials/model for the `allinonedm` agent.
-- `DATABASE_URL` — Postgres connection string for chat memory.
+- `DATABASE_URL` — Postgres connection string for engine chat memory (`agent_messages` table).
+- `DEMO_TELEGRAM_BOT_TOKEN` — demo project's Telegram bot token.
+- `DEMO_OPENROUTER_API_KEY`, `DEMO_OPENROUTER_MODEL` — demo project's OpenRouter credentials/model.
+- `DEMO_DATABASE_URL` — Postgres connection string for the demo project's own DB (`services` table). Same host as `DATABASE_URL`, different database.
 
 Env is per-project: each project's `*.config.ts` reads its own keys (`requireEnv`) at import time and packs them into the project config object. `OpenRouterChatModel` never reads env — it takes `{ apiKey, model }` in its constructor, supplied from project config.
 
@@ -72,7 +75,8 @@ Generic, reusable nodes. `telegram/` — `TelegramWebhookNode` (parses an update
 
 - `AiAgentNode` runs an LLM tool-calling loop: load memory → build messages → call the chat model → run any requested tools and loop → return the final answer. `maxSteps` (default 6) guards runaway loops.
 - The agent's three collaborators are **typed ports**, not engine `Node`s: `ChatModel`, `ChatMemory`, `AgentTool` (interfaces in `src/engine/ai/`). They are passed in the agent's input — a workflow supplies concrete implementations and hands them over. This keeps `Node` single-shot while letting the agent loop.
-- `OpenRouterChatModel` — `ChatModel` via raw `fetch` to OpenRouter's OpenAI-compatible endpoint (no SDK). Plain class: `new OpenRouterChatModel({ apiKey, model })` with values from project config — reads no env. `PgChatMemory` — `ChatMemory` over Postgres. Also a plain class: `new PgChatMemory()` with no args, resolves the singleton `db` handle internally from `src/engine/db/client.ts`.
+- `OpenRouterChatModel` — `ChatModel` via raw `fetch` to OpenRouter's OpenAI-compatible endpoint (no SDK). Plain class: `new OpenRouterChatModel({ apiKey, model })` with values from project config — reads no env. `PgChatMemory` — `ChatMemory` over Postgres. Plain class: `new PgChatMemory({ sessionId, windowSize? })`. `sessionId` is required and owned by the memory; `load()` / `append(messages)` take no sessionId. `windowSize` defaults to 20. Resolves the singleton `db` handle internally from `src/engine/db/client.ts`.
+- `AiAgentNode` input is flat: `{ input: string, systemPrompt?, chatModel, memory?, tools?, maxSteps? }`. No `payload` envelope and no `sessionId` on the agent — session identity belongs to the memory.
 - **Memory stores only the final human + AI text of each turn.** Intermediate tool-call / tool-result messages are run-internal scratch — never persisted. Stored history is therefore flat `user`/`assistant` rows.
 
 ### Database (`src/engine/db/`)
@@ -81,14 +85,18 @@ Drizzle ORM + `pg`. `client.ts` constructs the `pg` `Pool` and Drizzle handle at
 
 ### Projects (`src/projects/`)
 
-Each project is a self-contained Nest module imported by `AppModule` — its own controllers, workflows, and config. There is no central project registry. The workflow takes the trigger payload directly as `input` (e.g. `WorkflowFn<TelegramWebhookPayload, void>`); per-project config (`id`, tokens, keys) lives as a module-level singleton (`demoConfig`) the workflow imports.
+Each project is a self-contained Nest module imported by `AppModule` — its own controllers, workflows, tools, DB, and config. There is no central project registry. The workflow takes the trigger payload directly as `input` (e.g. `WorkflowFn<TelegramWebhookPayload, void>`); per-project config (`id`, tokens, keys, db URL) lives as a module-level singleton (`demoConfig`) the workflow imports.
 
 **Triggers are plain NestJS** — a project exposes a controller (e.g. a Telegram webhook `@Post`) that calls `WorkflowEngine.run(...)`. Triggers are not an engine abstraction; do not build a trigger/dispatcher layer.
+
+**Project-owned DB pattern (demo):** `src/projects/demo/db/` mirrors the engine pattern — `schema.ts` (services table), `client.ts` (singleton `demoDb` + idempotent `closeDemoDb()`), `db-shutdown.ts` (`@Injectable()` `BeforeApplicationShutdown` provider registered in `DemoModule`). Migrations live under `drizzle-demo/`, generated/applied via the `db:demo:*` scripts using `drizzle.demo.config.ts` at the repo root (excluded from the Nest build).
+
+**Project-owned tools:** project-specific `AgentTool`s (e.g. `GetServicesTool`) live under `src/projects/<name>/tools/`. The workflow constructs them inline (`new GetServicesTool()`) and passes them in `tools: [...]` on the agent input. Tools read from the project's own DB singleton, not the engine DB.
 
 ### Misc
 
 - Entry: `src/main.ts` imports `./load-env` first, bootstraps `AppModule`, calls `enableShutdownHooks()`, listens on `process.env.PORT ?? 3000`. No global pipes/filters/interceptors yet — add them here when introduced.
-- TypeScript is `nodenext` (CommonJS output, no `"type": "module"`). `tsconfig.build.json` excludes tests and `drizzle.config.ts` from production builds.
+- TypeScript is `nodenext` (CommonJS output, no `"type": "module"`). `tsconfig.build.json` excludes tests and both drizzle config files (`drizzle.config.ts`, `drizzle.demo.config.ts`) from production builds.
 - ESLint flat config (`eslint.config.mjs`) uses `typescript-eslint` + Prettier; lint is `--fix` by default, so running it will modify files.
 
 Design docs live in `docs/superpowers/specs/` — the workflow engine and AI agent node designs are the authoritative reference.

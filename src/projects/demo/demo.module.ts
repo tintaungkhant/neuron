@@ -3,10 +3,11 @@ import { EngineModule } from '../../engine';
 import { TelegramWebhookNode } from '../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../engine/nodes/telegram/send-message.node';
 import { DemoTelegramController } from './controllers/telegram.controller';
+import { DemoDbShutdown } from './db/db-shutdown';
 
 @Module({
   imports: [EngineModule],
   controllers: [DemoTelegramController],
-  providers: [TelegramWebhookNode, TelegramSendMessageNode],
+  providers: [TelegramWebhookNode, TelegramSendMessageNode, DemoDbShutdown],
 })
 export class DemoModule {}
