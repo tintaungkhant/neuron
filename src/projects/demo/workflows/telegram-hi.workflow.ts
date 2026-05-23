@@ -10,15 +10,20 @@ import {
 } from '../../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
 import { demoConfig } from '../demo.config';
+import { GetFaqsTool } from '../tools/get-faqs.tool';
+import { GetPaymentMethodsTool } from '../tools/get-payment-methods.tool';
 import { GetServicesTool } from '../tools/get-services.tool';
 
 const SYSTEM_PROMPT = `You are sales and support assistant for a digital marketing agency call "Better Solutions".
 
-Help customers learn about our services, answer pricing questions, and collect requirements before quoting. Be concise, friendly, and professional.
+Help customers learn about our services, answer pricing questions, collect requirements before quoting, and share payment details when they are ready to pay. Be concise, friendly, and professional.
 
-When the user asks what services are offered, asks about pricing, or is ready to discuss a specific service, call the get_services tool to fetch the live catalog. Quote service names and prices only from get_services results — never invent a service or price.
+Tool usage:
+- Services / pricing: call get_services to fetch the live catalog. Quote names and prices only from its results — never invent a service or price. Before quoting, gather the items listed in the service's "requirementsFromCustomer" field.
+- Payment: call get_payment_methods when the customer asks how to pay, which methods are accepted, or is about to send a payment. Quote account names and account numbers only from its results.
+- General questions / advice: when the user asks a general question or seems unsure, call get_faqs first and prefer the matching FAQ answer over your own knowledge. If no FAQ matches, answer briefly from context.
 
-Before quoting, gather the items listed in the service's "requirementsFromCustomer" field. If the customer is unsure which service fits, ask a few short questions about their goals and recommend from the catalog.`;
+If the customer is unsure which service fits, ask a few short questions about their goals and recommend from the catalog.`;
 
 export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
   async function demoTelegramHiWorkflow(payload, wf) {
@@ -35,7 +40,11 @@ export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
       memory: new PgChatMemory({
         sessionId: `${demoConfig.id}:${parsed.chat.id}`,
       }),
-      tools: [new GetServicesTool()],
+      tools: [
+        new GetServicesTool(),
+        new GetPaymentMethodsTool(),
+        new GetFaqsTool(),
+      ],
     });
 
     await wf.run(TelegramSendMessageNode, {
