@@ -42,13 +42,9 @@ describe('DemoTelegramController', () => {
       .expect({ ok: true });
 
     expect(runMock).toHaveBeenCalledTimes(1);
-    const [wf, input] = runMock.mock.calls[0] as [
-      unknown,
-      { project: { id: string }; payload: unknown },
-    ];
+    const [wf, input] = runMock.mock.calls[0] as [unknown, unknown];
     expect(wf).toBe(demoTelegramHiWorkflow);
-    expect(input.project.id).toBe('demo');
-    expect(input.payload).toEqual(update);
+    expect(input).toEqual(update);
   });
 
   it('returns 200 even when the workflow throws', async () => {

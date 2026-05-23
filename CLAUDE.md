@@ -81,7 +81,7 @@ Drizzle ORM + `pg`. `client.ts` constructs the `pg` `Pool` and Drizzle handle at
 
 ### Projects (`src/projects/`)
 
-Each project is a self-contained Nest module imported by `AppModule` — its own controllers, workflows, and config. There is no central project registry. A project passes `{ id, config }` into workflows via `WorkflowInput<TConfig, TPayload>`.
+Each project is a self-contained Nest module imported by `AppModule` — its own controllers, workflows, and config. There is no central project registry. The workflow takes the trigger payload directly as `input` (e.g. `WorkflowFn<TelegramWebhookPayload, void>`); per-project config (`id`, tokens, keys) lives as a module-level singleton (`demoConfig`) the workflow imports.
 
 **Triggers are plain NestJS** — a project exposes a controller (e.g. a Telegram webhook `@Post`) that calls `WorkflowEngine.run(...)`. Triggers are not an engine abstraction; do not build a trigger/dispatcher layer.
 

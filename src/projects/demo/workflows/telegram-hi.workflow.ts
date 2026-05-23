@@ -9,33 +9,29 @@ import {
   type TelegramWebhookPayload,
 } from '../../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
-import type { WorkflowInput } from '../../project.types';
-import type { DemoConfig } from '../demo.config';
+import { demoConfig } from '../demo.config';
 
-export const demoTelegramHiWorkflow: WorkflowFn<
-  WorkflowInput<DemoConfig, TelegramWebhookPayload>,
-  void
-> = async function demoTelegramHiWorkflow(input, wf) {
-  const parsed = await wf.run(TelegramWebhookNode, input.payload);
-  if (!parsed.text) return;
+export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
+  async function demoTelegramHiWorkflow(payload, wf) {
+    const parsed = await wf.run(TelegramWebhookNode, payload);
+    if (!parsed.text) return;
 
-  const agent = await wf.run(AiAgentNode, {
-    payload: {
-      input: parsed.text,
-      sessionId: `${input.project.id}:${parsed.chat.id}`,
-    },
-    systemPrompt: 'You are a helpful assistant.',
-    chatModel: new OpenRouterChatModel({
-      apiKey: input.project.config.openRouterApiKey,
-      model: input.project.config.openRouterModel,
-    }),
-    memory: new PgChatMemory(),
-    tools: [],
-  });
+    const agent = await wf.run(AiAgentNode, {
+      payload: {
+        input: parsed.text,
+        sessionId: `${demoConfig.id}:${parsed.chat.id}`,
+      },
+      systemPrompt: 'You are a helpful assistant.',
+      chatModel: new OpenRouterChatModel({
+        apiKey: demoConfig.openRouterApiKey,
+        model: demoConfig.openRouterModel,
+      }),
+      memory: new PgChatMemory(),
+    });
 
-  await wf.run(TelegramSendMessageNode, {
-    botToken: input.project.config.telegramBotToken,
-    chatId: parsed.chat.id,
-    text: agent.output,
-  });
-};
+    await wf.run(TelegramSendMessageNode, {
+      botToken: demoConfig.telegramBotToken,
+      chatId: parsed.chat.id,
+      text: agent.output,
+    });
+  };

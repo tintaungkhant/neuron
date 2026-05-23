@@ -7,8 +7,6 @@ import { EngineModule, WorkflowEngine, PgChatMemory } from '../../../engine';
 import { TelegramWebhookNode } from '../../../engine/nodes/telegram/webhook.node';
 import type { TelegramWebhookPayload } from '../../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
-import type { WorkflowInput } from '../../project.types';
-import type { DemoConfig } from '../demo.config';
 import { demoTelegramHiWorkflow } from './telegram-hi.workflow';
 
 function urlOf(input: RequestInfo | URL): string {
@@ -60,27 +58,17 @@ describe('demoTelegramHiWorkflow', () => {
   });
 
   it('runs webhook -> agent -> send and replies with the agent output', async () => {
-    const input: WorkflowInput<DemoConfig, TelegramWebhookPayload> = {
-      project: {
-        id: 'demo',
-        config: {
-          telegramBotToken: 'TESTTOKEN',
-          openRouterApiKey: 'test-key',
-          openRouterModel: 'openai/gpt-4o-mini',
-        },
-      },
-      payload: {
-        update_id: 1,
-        message: {
-          message_id: 5,
-          chat: { id: 99, type: 'private' },
-          date: 1700000000,
-          text: 'hello bot',
-        },
+    const payload: TelegramWebhookPayload = {
+      update_id: 1,
+      message: {
+        message_id: 5,
+        chat: { id: 99, type: 'private' },
+        date: 1700000000,
+        text: 'hello bot',
       },
     };
 
-    const { trace } = await engine.run(demoTelegramHiWorkflow, input);
+    const { trace } = await engine.run(demoTelegramHiWorkflow, payload);
 
     expect(trace.workflowName).toBe('demoTelegramHiWorkflow');
     expect(trace.status).toBe('ok');
@@ -102,27 +90,17 @@ describe('demoTelegramHiWorkflow', () => {
   });
 
   it('uses a project-namespaced sessionId for memory', async () => {
-    const input: WorkflowInput<DemoConfig, TelegramWebhookPayload> = {
-      project: {
-        id: 'demo',
-        config: {
-          telegramBotToken: 'TESTTOKEN',
-          openRouterApiKey: 'test-key',
-          openRouterModel: 'openai/gpt-4o-mini',
-        },
-      },
-      payload: {
-        update_id: 1,
-        message: {
-          message_id: 5,
-          chat: { id: 99, type: 'private' },
-          date: 1700000000,
-          text: 'hello bot',
-        },
+    const payload: TelegramWebhookPayload = {
+      update_id: 1,
+      message: {
+        message_id: 5,
+        chat: { id: 99, type: 'private' },
+        date: 1700000000,
+        text: 'hello bot',
       },
     };
 
-    await engine.run(demoTelegramHiWorkflow, input);
+    await engine.run(demoTelegramHiWorkflow, payload);
 
     expect(memory.load).toHaveBeenCalledWith('demo:99');
     expect(memory.append).toHaveBeenCalledWith('demo:99', [
@@ -132,26 +110,16 @@ describe('demoTelegramHiWorkflow', () => {
   });
 
   it('ignores updates with no text', async () => {
-    const input: WorkflowInput<DemoConfig, TelegramWebhookPayload> = {
-      project: {
-        id: 'demo',
-        config: {
-          telegramBotToken: 'TESTTOKEN',
-          openRouterApiKey: 'test-key',
-          openRouterModel: 'openai/gpt-4o-mini',
-        },
-      },
-      payload: {
-        update_id: 2,
-        message: {
-          message_id: 6,
-          chat: { id: 1, type: 'private' },
-          date: 1700000000,
-        },
+    const payload: TelegramWebhookPayload = {
+      update_id: 2,
+      message: {
+        message_id: 6,
+        chat: { id: 1, type: 'private' },
+        date: 1700000000,
       },
     };
 
-    const { trace } = await engine.run(demoTelegramHiWorkflow, input);
+    const { trace } = await engine.run(demoTelegramHiWorkflow, payload);
 
     expect(trace.steps.map((s) => s.name)).toEqual(['TelegramWebhookNode']);
     expect(fetchSpy).not.toHaveBeenCalled();

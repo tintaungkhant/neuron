@@ -1,4 +1,5 @@
 export type DemoConfig = {
+  id: string;
   telegramBotToken: string;
   openRouterApiKey: string;
   openRouterModel: string;
@@ -11,6 +12,7 @@ function requireEnv(name: string): string {
 }
 
 export const demoConfig: DemoConfig = {
+  id: 'demo',
   telegramBotToken: requireEnv('DEMO_TELEGRAM_BOT_TOKEN'),
   openRouterApiKey: requireEnv('DEMO_OPENROUTER_API_KEY'),
   openRouterModel: requireEnv('DEMO_OPENROUTER_MODEL'),
