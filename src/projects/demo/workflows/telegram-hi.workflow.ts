@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import {
   AiAgentNode,
   OpenRouterChatModel,
@@ -10,6 +11,8 @@ import {
 } from '../../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
 import { demoConfig } from '../demo.config';
+import { demoDb } from '../db/client';
+import { chats } from '../db/schema';
 import { GetFaqsTool } from '../tools/get-faqs.tool';
 import { GetPaymentMethodsTool } from '../tools/get-payment-methods.tool';
 import { GetServicesTool } from '../tools/get-services.tool';
@@ -28,6 +31,19 @@ If the customer is unsure which service fits, ask a few short questions about th
 export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
   async function demoTelegramHiWorkflow(payload, wf) {
     const parsed = await wf.run(TelegramWebhookNode, payload);
+
+    const existing = await demoDb
+      .select({ id: chats.id })
+      .from(chats)
+      .where(eq(chats.extId, parsed.chat.id))
+      .limit(1);
+    if (existing.length === 0) {
+      await demoDb.insert(chats).values({
+        extId: parsed.chat.id,
+        name: parsed.from?.username ?? parsed.from?.firstName ?? null,
+      });
+    }
+
     if (!parsed.text) return;
 
     const agent = await wf.run(AiAgentNode, {
