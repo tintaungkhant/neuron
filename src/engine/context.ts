@@ -8,8 +8,6 @@ export interface Context {
   run<I, O>(node: Type<Node<I, O>>, input: I): Promise<O>;
 
   runWorkflow<TIn, TOut>(wf: WorkflowFn<TIn, TOut>, input: TIn): Promise<TOut>;
-
-  get<T>(type: Type<T>): T;
 }
 
 export class ContextImpl implements Context {
@@ -17,10 +15,6 @@ export class ContextImpl implements Context {
     private readonly trace: Trace,
     private readonly moduleRef: ModuleRef,
   ) {}
-
-  get<T>(type: Type<T>): T {
-    return this.moduleRef.get(type, { strict: false });
-  }
 
   async run<I, O>(node: Type<Node<I, O>>, input: I): Promise<O> {
     const instance = this.moduleRef.get(node, { strict: false });

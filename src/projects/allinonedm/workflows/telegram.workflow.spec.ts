@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { EngineModule, WorkflowEngine, PgChatMemory } from '../../../engine';
+import { EngineModule, WorkflowEngine } from '../../../engine';
 import {
   TelegramWebhookNode,
   type TelegramWebhookPayload,
@@ -7,7 +7,7 @@ import {
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
 import type { WorkflowInput } from '../../project.types';
 import type { AllInOneDMConfig } from '../allinonedm.config';
-import { telegramWorkflow } from './telegram.workflow';
+import { makeTelegramWorkflow } from './telegram.workflow';
 
 function urlOf(input: RequestInfo | URL): string {
   if (typeof input === 'string') return input;
@@ -20,19 +20,18 @@ describe('telegramWorkflow', () => {
   let engine: WorkflowEngine;
   let fetchSpy: jest.SpyInstance;
   let memory: { load: jest.Mock; append: jest.Mock };
+  let workflow: ReturnType<typeof makeTelegramWorkflow>;
 
   beforeEach(async () => {
     memory = {
       load: jest.fn().mockResolvedValue([]),
       append: jest.fn().mockResolvedValue(undefined),
     };
+    workflow = makeTelegramWorkflow(memory);
     mod = await Test.createTestingModule({
       imports: [EngineModule],
       providers: [TelegramWebhookNode, TelegramSendMessageNode],
-    })
-      .overrideProvider(PgChatMemory)
-      .useValue(memory)
-      .compile();
+    }).compile();
     engine = mod.get(WorkflowEngine);
 
     fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((input) => {
@@ -79,8 +78,9 @@ describe('telegramWorkflow', () => {
       },
     };
 
-    const { trace } = await engine.run(telegramWorkflow, input);
+    const { trace } = await engine.run(workflow, input);
 
+    expect(trace.workflowName).toBe('telegramWorkflow');
     expect(trace.status).toBe('ok');
     expect(trace.steps.map((s) => s.name)).toEqual([
       'TelegramWebhookNode',
@@ -120,7 +120,7 @@ describe('telegramWorkflow', () => {
       },
     };
 
-    await engine.run(telegramWorkflow, input);
+    await engine.run(workflow, input);
 
     expect(memory.load).toHaveBeenCalledWith('allinonedm:555');
     expect(memory.append).toHaveBeenCalledWith('allinonedm:555', [
@@ -149,7 +149,7 @@ describe('telegramWorkflow', () => {
       },
     };
 
-    const { trace } = await engine.run(telegramWorkflow, input);
+    const { trace } = await engine.run(workflow, input);
 
     expect(trace.steps.map((s) => s.name)).toEqual(['TelegramWebhookNode']);
     expect(fetchSpy).not.toHaveBeenCalled();

@@ -60,7 +60,7 @@ Env is per-project: each project's `*.config.ts` reads its own keys (`requireEnv
 - `ctx` (`Context`) is how a workflow reaches the engine:
   - `ctx.run(NodeClass, input)` — resolve a node via Nest DI (`ModuleRef`, non-strict) and execute it; the call is recorded as a `Trace` step.
   - `ctx.runWorkflow(wf, input)` — run a sub-workflow with a nested trace.
-  - `ctx.get(Type)` — resolve any DI provider (used to hand provider instances into a node's input).
+  - `ctx` has no DI accessor. A workflow never reaches into the container — DI-managed collaborators (e.g. `PgChatMemory`) enter via a **workflow factory**: the project's controller injects them and calls a `makeXxxWorkflow(deps)` factory that closes over the deps and returns a `WorkflowFn`. Trigger data (payload + project config) is the workflow's `input`; runtime collaborators are not.
 - A **node** extends the abstract `Node<I, O>` with one method, `execute(input): Promise<O>`. Nodes are single-shot: no `ctx`, cannot call other nodes. Orchestration belongs in workflows.
 - `EngineModule` provides + exports `WorkflowEngine` and the DI-backed AI providers (`AiAgentNode`, `PgChatMemory`) and imports `DbModule`. Every project module imports `EngineModule`. `OpenRouterChatModel` is *not* a DI provider — it is a plain class a workflow constructs with per-project config.
 
@@ -72,7 +72,7 @@ Generic, reusable nodes. `telegram/` — `TelegramWebhookNode` (parses an update
 
 - `AiAgentNode` runs an LLM tool-calling loop: load memory → build messages → call the chat model → run any requested tools and loop → return the final answer. `maxSteps` (default 6) guards runaway loops.
 - The agent's three collaborators are **typed ports**, not engine `Node`s: `ChatModel`, `ChatMemory`, `AgentTool` (interfaces in `src/engine/ai/`). They are passed in the agent's input — a workflow supplies concrete implementations and hands them over. This keeps `Node` single-shot while letting the agent loop.
-- `OpenRouterChatModel` — `ChatModel` via raw `fetch` to OpenRouter's OpenAI-compatible endpoint (no SDK). It is a plain class: a workflow does `new OpenRouterChatModel({ apiKey, model })` with values from project config — it reads no env. `PgChatMemory` — `ChatMemory` over Postgres, resolved via `ctx.get(PgChatMemory)`.
+- `OpenRouterChatModel` — `ChatModel` via raw `fetch` to OpenRouter's OpenAI-compatible endpoint (no SDK). It is a plain class: a workflow does `new OpenRouterChatModel({ apiKey, model })` with values from project config — it reads no env. `PgChatMemory` — `ChatMemory` over Postgres; a DI provider, so the project controller injects it and supplies it to the workflow's factory (`makeTelegramWorkflow(memory)`), which closes over it.
 - **Memory stores only the final human + AI text of each turn.** Intermediate tool-call / tool-result messages are run-internal scratch — never persisted. Stored history is therefore flat `user`/`assistant` rows.
 
 ### Database (`src/engine/db/`)
