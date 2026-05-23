@@ -8,6 +8,20 @@
       "when": 1779515619198,
       "tag": "0000_productive_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779517155369,
+      "tag": "0001_yellow_corsair",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779517442037,
+      "tag": "0002_nifty_wallflower",
+      "breakpoints": true
     }
   ]
 }
