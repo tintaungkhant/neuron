@@ -10,20 +10,20 @@ export class WorkflowEngine {
   constructor(private readonly moduleRef: ModuleRef) {}
 
   async run<TIn, TOut>(
-    wf: WorkflowFn<TIn, TOut>,
+    workflow: WorkflowFn<TIn, TOut>,
     input: TIn,
   ): Promise<{ result: TOut; trace: Trace }> {
     const trace: Trace = {
-      workflowName: wf.name,
+      workflowName: workflow.name,
       startedAt: Date.now(),
       finishedAt: 0,
       status: 'ok',
       input,
       steps: [],
     };
-    const ctx = new ContextImpl(trace, this.moduleRef);
+    const wf = new ContextImpl(trace, this.moduleRef);
     try {
-      const result = await wf(input, ctx);
+      const result = await workflow(input, wf);
       trace.output = result;
       trace.finishedAt = Date.now();
       return { result, trace };

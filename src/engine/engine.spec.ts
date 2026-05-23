@@ -37,16 +37,14 @@ describe('WorkflowEngine — happy path', () => {
   });
 
   it('runs a workflow, returns result + trace, records each node step', async () => {
-    const wf: WorkflowFn<{ name: string }, string> = async function greetWf(
-      input,
-      ctx,
-    ) {
-      const g = await ctx.run(GreetNode, { name: input.name });
-      const shouted = await ctx.run(ShoutNode, { text: g });
-      return shouted;
-    };
+    const workflow: WorkflowFn<{ name: string }, string> =
+      async function greetWf(input, wf) {
+        const g = await wf.run(GreetNode, { name: input.name });
+        const shouted = await wf.run(ShoutNode, { text: g });
+        return shouted;
+      };
 
-    const { result, trace } = await engine.run(wf, { name: 'alice' });
+    const { result, trace } = await engine.run(workflow, { name: 'alice' });
 
     expect(result).toBe('HI ALICE');
     expect(trace.workflowName).toBe('greetWf');
@@ -123,12 +121,15 @@ describe('WorkflowEngine — error path', () => {
     }).compile();
     const localEngine = localMod.get(WorkflowEngine);
 
-    const wf: WorkflowFn<void, void> = async function uncaughtWf(_input, ctx) {
-      await ctx.run(FailingNode, undefined);
+    const workflow: WorkflowFn<void, void> = async function uncaughtWf(
+      _input,
+      wf,
+    ) {
+      await wf.run(FailingNode, undefined);
     };
 
     try {
-      await localEngine.run(wf, undefined);
+      await localEngine.run(workflow, undefined);
       throw new Error('expected throw');
     } catch (e) {
       expect(e).toBeInstanceOf(WorkflowError);
@@ -161,19 +162,19 @@ describe('WorkflowEngine — error path', () => {
     try {
       const localEngine = localMod.get(WorkflowEngine);
 
-      const wf: WorkflowFn<void, string> = async function recoverWf(
+      const workflow: WorkflowFn<void, string> = async function recoverWf(
         _input,
-        ctx,
+        wf,
       ) {
         try {
-          await ctx.run(BoomNode, undefined);
+          await wf.run(BoomNode, undefined);
         } catch {
           // swallow
         }
-        return ctx.run(GreetNode, { name: 'bob' });
+        return wf.run(GreetNode, { name: 'bob' });
       };
 
-      const { result, trace } = await localEngine.run(wf, undefined);
+      const { result, trace } = await localEngine.run(workflow, undefined);
       expect(result).toBe('hi bob');
       expect(trace.status).toBe('ok');
       expect(trace.steps).toHaveLength(2);
@@ -206,13 +207,13 @@ describe('WorkflowEngine — sub-workflows', () => {
 
   it('runs a sub-workflow through the engine and nests its trace', async () => {
     const childWf: WorkflowFn<{ name: string }, string> =
-      async function childWf(input, ctx) {
-        return ctx.run(GreetNode, { name: input.name });
+      async function childWf(input, wf) {
+        return wf.run(GreetNode, { name: input.name });
       };
 
     const parentWf: WorkflowFn<{ name: string }, string> =
-      async function parentWf(input, ctx) {
-        return ctx.runWorkflow(childWf, { name: input.name });
+      async function parentWf(input, wf) {
+        return wf.runWorkflow(childWf, { name: input.name });
       };
 
     const { result, trace } = await engine.run(parentWf, { name: 'carol' });

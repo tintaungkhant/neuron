@@ -56,12 +56,12 @@ Env is per-project: each project's `*.config.ts` reads its own keys (`requireEnv
 
 ### Workflow engine (`src/engine/`)
 
-- A **workflow** is a plain async function `WorkflowFn<TIn, TOut>(input, ctx)` — not a class. `WorkflowEngine.run(wf, input)` executes one and returns `{ result, trace }`. Failures throw `WorkflowError`, which carries the `Trace`.
-- `ctx` (`Context`) is how a workflow reaches the engine:
-  - `ctx.run(NodeClass, input)` — resolve a node via Nest DI (`ModuleRef`, non-strict) and execute it; the call is recorded as a `Trace` step.
-  - `ctx.runWorkflow(wf, input)` — run a sub-workflow with a nested trace.
-  - `ctx` has no DI accessor. A workflow never reaches into the container — DI-managed collaborators (e.g. `PgChatMemory`) enter via a **workflow factory**: the project's controller injects them and calls a `makeXxxWorkflow(deps)` factory that closes over the deps and returns a `WorkflowFn`. Trigger data (payload + project config) is the workflow's `input`; runtime collaborators are not.
-- A **node** extends the abstract `Node<I, O>` with one method, `execute(input): Promise<O>`. Nodes are single-shot: no `ctx`, cannot call other nodes. Orchestration belongs in workflows.
+- A **workflow** is a plain async function `WorkflowFn<TIn, TOut>(input, wf)` — not a class. `WorkflowEngine.run(workflow, input)` executes one and returns `{ result, trace }`. Failures throw `WorkflowError`, which carries the `Trace`.
+- `wf` (`Context`) is the workflow's handle to the engine:
+  - `wf.run(NodeClass, input)` — resolve a node via Nest DI (`ModuleRef`, non-strict) and execute it; the call is recorded as a `Trace` step.
+  - `wf.runWorkflow(subWf, input)` — run a sub-workflow with a nested trace.
+  - `wf` has no DI accessor. A workflow never reaches into the container — DI-managed collaborators (e.g. `PgChatMemory`) enter via a **workflow factory**: the project's controller injects them and calls a `makeXxxWorkflow(deps)` factory that closes over the deps and returns a `WorkflowFn`. Trigger data (payload + project config) is the workflow's `input`; runtime collaborators are not.
+- A **node** extends the abstract `Node<I, O>` with one method, `execute(input): Promise<O>`. Nodes are single-shot: no `wf`, cannot call other nodes. Orchestration belongs in workflows.
 - `EngineModule` provides + exports `WorkflowEngine` and the DI-backed AI providers (`AiAgentNode`, `PgChatMemory`) and imports `DbModule`. Every project module imports `EngineModule`. `OpenRouterChatModel` is *not* a DI provider — it is a plain class a workflow constructs with per-project config.
 
 ### Built-in nodes (`src/engine/nodes/`)

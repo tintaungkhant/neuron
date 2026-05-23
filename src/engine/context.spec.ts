@@ -31,17 +31,17 @@ class BoomNode extends Node<void, void> {
 
 function makeCtxWithRef(moduleRef: Partial<ModuleRef>) {
   const trace = makeTrace();
-  const ctx = new ContextImpl(trace, moduleRef as ModuleRef);
-  return { ctx, trace };
+  const wf = new ContextImpl(trace, moduleRef as ModuleRef);
+  return { wf, trace };
 }
 
 describe('ContextImpl.run', () => {
   it('resolves the node via ModuleRef and returns its output', async () => {
     const instance = new DoubleNode();
     const get = jest.fn().mockReturnValue(instance);
-    const { ctx, trace } = makeCtxWithRef({ get });
+    const { wf, trace } = makeCtxWithRef({ get });
 
-    const out = await ctx.run(DoubleNode, { x: 3 });
+    const out = await wf.run(DoubleNode, { x: 3 });
 
     expect(out).toBe(6);
     expect(get).toHaveBeenCalledWith(DoubleNode, { strict: false });
@@ -57,9 +57,9 @@ describe('ContextImpl.run', () => {
 
   it('records error step and re-throws original cause when node fails', async () => {
     const get = jest.fn().mockReturnValue(new BoomNode());
-    const { ctx, trace } = makeCtxWithRef({ get });
+    const { wf, trace } = makeCtxWithRef({ get });
 
-    await expect(ctx.run(BoomNode, undefined)).rejects.toThrow('boom');
+    await expect(wf.run(BoomNode, undefined)).rejects.toThrow('boom');
 
     expect(trace.steps).toHaveLength(1);
     expect(trace.steps[0]).toMatchObject({
@@ -72,10 +72,10 @@ describe('ContextImpl.run', () => {
 
   it('sets startedAt and finishedAt timestamps on the step', async () => {
     const get = jest.fn().mockReturnValue(new DoubleNode());
-    const { ctx, trace } = makeCtxWithRef({ get });
+    const { wf, trace } = makeCtxWithRef({ get });
 
     const before = Date.now();
-    await ctx.run(DoubleNode, { x: 1 });
+    await wf.run(DoubleNode, { x: 1 });
     const after = Date.now();
 
     const step = trace.steps[0];
@@ -88,13 +88,13 @@ describe('ContextImpl.run', () => {
 describe('ContextImpl.runWorkflow', () => {
   it('runs a sub-workflow and nests its trace', async () => {
     const get = jest.fn().mockReturnValue(new DoubleNode());
-    const { ctx, trace } = makeCtxWithRef({ get });
+    const { wf, trace } = makeCtxWithRef({ get });
 
-    const sub: WorkflowFn<{ x: number }, number> = async (input, subCtx) => {
-      return subCtx.run(DoubleNode, { x: input.x });
+    const sub: WorkflowFn<{ x: number }, number> = async (input, subWf) => {
+      return subWf.run(DoubleNode, { x: input.x });
     };
 
-    const out = await ctx.runWorkflow(sub, { x: 5 });
+    const out = await wf.runWorkflow(sub, { x: 5 });
 
     expect(out).toBe(10);
     expect(trace.steps).toHaveLength(1);
@@ -114,14 +114,14 @@ describe('ContextImpl.runWorkflow', () => {
   });
 
   it('records error and re-throws when sub-workflow fails', async () => {
-    const { ctx, trace } = makeCtxWithRef({ get: jest.fn() });
+    const { wf, trace } = makeCtxWithRef({ get: jest.fn() });
 
     // eslint-disable-next-line @typescript-eslint/require-await
     const failing: WorkflowFn<void, void> = async () => {
       throw new Error('child boom');
     };
 
-    await expect(ctx.runWorkflow(failing, undefined)).rejects.toThrow(
+    await expect(wf.runWorkflow(failing, undefined)).rejects.toThrow(
       'child boom',
     );
 

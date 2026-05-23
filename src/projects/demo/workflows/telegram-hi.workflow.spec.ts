@@ -1,28 +1,53 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EngineModule, WorkflowEngine } from '../../../engine';
-import {
-  TelegramWebhookNode,
-  type TelegramWebhookPayload,
-} from '../../../engine/nodes/telegram/webhook.node';
+import { TelegramWebhookNode } from '../../../engine/nodes/telegram/webhook.node';
+import type { TelegramWebhookPayload } from '../../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
 import type { WorkflowInput } from '../../project.types';
 import type { DemoConfig } from '../demo.config';
-import { demoTelegramHiWf } from './telegram-hi.workflow';
+import { makeDemoTelegramHiWorkflow } from './telegram-hi.workflow';
 
-describe('demoTelegramHiWf', () => {
+function urlOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+describe('demoTelegramHiWorkflow', () => {
   let mod: TestingModule;
   let engine: WorkflowEngine;
   let fetchSpy: jest.SpyInstance;
+  let memory: { load: jest.Mock; append: jest.Mock };
+  let workflow: ReturnType<typeof makeDemoTelegramHiWorkflow>;
 
   beforeEach(async () => {
+    memory = {
+      load: jest.fn().mockResolvedValue([]),
+      append: jest.fn().mockResolvedValue(undefined),
+    };
+    workflow = makeDemoTelegramHiWorkflow(memory);
     mod = await Test.createTestingModule({
       imports: [EngineModule],
       providers: [TelegramWebhookNode, TelegramSendMessageNode],
     }).compile();
     engine = mod.get(WorkflowEngine);
-    fetchSpy = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
+
+    fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((input) => {
+      const url = urlOf(input);
+      if (url.startsWith('https://openrouter.ai/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              choices: [
+                { message: { role: 'assistant', content: 'agent reply' } },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
+    });
   });
 
   afterEach(async () => {
@@ -30,39 +55,102 @@ describe('demoTelegramHiWf', () => {
     await mod.close();
   });
 
-  it("replies 'hi' to the incoming chat", async () => {
+  it('runs webhook -> agent -> send and replies with the agent output', async () => {
     const input: WorkflowInput<DemoConfig, TelegramWebhookPayload> = {
-      project: { id: 'demo', config: { telegramBotToken: 'TESTTOKEN' } },
+      project: {
+        id: 'demo',
+        config: {
+          telegramBotToken: 'TESTTOKEN',
+          openRouterApiKey: 'test-key',
+          openRouterModel: 'openai/gpt-4o-mini',
+        },
+      },
       payload: {
         update_id: 1,
         message: {
-          message_id: 1,
+          message_id: 5,
           chat: { id: 99, type: 'private' },
           date: 1700000000,
-          text: 'anything',
+          text: 'hello bot',
         },
       },
     };
 
-    const { trace } = await engine.run(demoTelegramHiWf, input);
+    const { trace } = await engine.run(workflow, input);
 
+    expect(trace.workflowName).toBe('demoTelegramHiWorkflow');
     expect(trace.status).toBe('ok');
-    expect(trace.steps).toHaveLength(2);
-    expect(trace.steps[0]).toMatchObject({
-      name: 'TelegramWebhookNode',
-      status: 'ok',
-    });
-    expect(trace.steps[1]).toMatchObject({
-      name: 'TelegramSendMessageNode',
-      status: 'ok',
-    });
+    expect(trace.steps.map((s) => s.name)).toEqual([
+      'TelegramWebhookNode',
+      'AiAgentNode',
+      'TelegramSendMessageNode',
+    ]);
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://api.telegram.org/botTESTTOKEN/sendMessage');
-    expect(JSON.parse(init.body as string)).toEqual({
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
+    const telegramCall = calls.find(([u]) =>
+      urlOf(u).includes('api.telegram.org'),
+    );
+    expect(telegramCall).toBeDefined();
+    expect(JSON.parse(telegramCall![1].body as string)).toEqual({
       chat_id: 99,
-      text: 'hi',
+      text: 'agent reply',
     });
+  });
+
+  it('uses a project-namespaced sessionId for memory', async () => {
+    const input: WorkflowInput<DemoConfig, TelegramWebhookPayload> = {
+      project: {
+        id: 'demo',
+        config: {
+          telegramBotToken: 'TESTTOKEN',
+          openRouterApiKey: 'test-key',
+          openRouterModel: 'openai/gpt-4o-mini',
+        },
+      },
+      payload: {
+        update_id: 1,
+        message: {
+          message_id: 5,
+          chat: { id: 99, type: 'private' },
+          date: 1700000000,
+          text: 'hello bot',
+        },
+      },
+    };
+
+    await engine.run(workflow, input);
+
+    expect(memory.load).toHaveBeenCalledWith('demo:99');
+    expect(memory.append).toHaveBeenCalledWith('demo:99', [
+      { role: 'user', content: 'hello bot' },
+      { role: 'assistant', content: 'agent reply' },
+    ]);
+  });
+
+  it('ignores updates with no text', async () => {
+    const input: WorkflowInput<DemoConfig, TelegramWebhookPayload> = {
+      project: {
+        id: 'demo',
+        config: {
+          telegramBotToken: 'TESTTOKEN',
+          openRouterApiKey: 'test-key',
+          openRouterModel: 'openai/gpt-4o-mini',
+        },
+      },
+      payload: {
+        update_id: 2,
+        message: {
+          message_id: 6,
+          chat: { id: 1, type: 'private' },
+          date: 1700000000,
+        },
+      },
+    };
+
+    const { trace } = await engine.run(workflow, input);
+
+    expect(trace.steps.map((s) => s.name)).toEqual(['TelegramWebhookNode']);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(memory.load).not.toHaveBeenCalled();
   });
 });
