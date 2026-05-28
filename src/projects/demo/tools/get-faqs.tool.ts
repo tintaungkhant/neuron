@@ -1,6 +1,6 @@
 import type { AgentTool } from '../../../engine';
 import { demoDb } from '../db/client';
-import { fqas } from '../db/schema';
+import { faqs } from '../db/schema';
 
 export type Faq = {
   question: string | null;
@@ -18,7 +18,7 @@ export class GetFaqsTool implements AgentTool {
   };
 
   async execute(): Promise<Faq[]> {
-    const rows = await demoDb.select().from(fqas);
+    const rows = await demoDb.select().from(faqs);
     return rows.map((r) => ({
       question: r.question,
       answer: r.answer,

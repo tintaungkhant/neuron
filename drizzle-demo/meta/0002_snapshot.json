@@ -35,8 +35,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.fqas": {
-      "name": "fqas",
+    "public.faqs": {
+      "name": "faqs",
       "schema": "",
       "columns": {
         "id": {

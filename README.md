@@ -6,7 +6,7 @@ Workflows are plain async functions. Nodes are single-shot units of work. The AI
 
 > **Status:** early. Public API is unstable, may change without deprecation.
 
-> **Note:** typos still live in the schema (e.g. `fqas` for the FAQ table). Tracked, not yet renamed; PRs welcome once a rename pass is scoped.
+> **Note:** typos still live in the schema (e.g. `faqs` for the FAQ table). Tracked, not yet renamed; PRs welcome once a rename pass is scoped.
 
 ---
 
@@ -36,7 +36,7 @@ cp .env.example .env
 # Two separate databases — engine memory and demo project tables.
 # Create both Postgres databases first, then:
 pnpm db:migrate          # engine schema (agent_messages)
-pnpm db:demo:migrate     # demo schema (services, chats, orders, fqas, payment_methods)
+pnpm db:demo:migrate     # demo schema (services, chats, orders, faqs, payment_methods)
 
 pnpm start:dev           # http://localhost:3000
 ```

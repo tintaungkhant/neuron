@@ -28,7 +28,7 @@ export const orders = pgTable('orders', {
   summary: text('summary'),
 });
 
-export const fqas = pgTable('fqas', {
+export const faqs = pgTable('faqs', {
   id: serial('id').primaryKey(),
   question: text('question'),
   answer: text('answer'),

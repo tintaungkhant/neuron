@@ -21,7 +21,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:demo:generate": "drizzle-kit generate --config=drizzle.demo.config.ts",
-    "db:demo:migrate": "drizzle-kit migrate --config=drizzle.demo.config.ts"
+    "db:demo:migrate": "drizzle-kit migrate --config=drizzle.demo.config.ts",
+    "db:demo:seed": "ts-node -P tsconfig.json src/projects/demo/db/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
