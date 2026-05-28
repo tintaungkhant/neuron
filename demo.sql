@@ -1,5 +1,5 @@
 -- -------------------------------------------------------------
--- AllInOneDM — Demo Seed Data
+-- Better Solutions — Demo Seed Data
 -- A Myanmar-based digital marketing & media buying agency.
 -- Provides Facebook/TikTok boosting, content creation,
 -- design, video production, and consultation services.
@@ -317,7 +317,7 @@ For new sales posts, since reactions and comments are still low, we suggest runn
 - Low page followers reduce customer trust — people visit your page, see low numbers, and hesitate to contact you.
 - New posts with few reactions get lower impressions, so fewer people see them.
 - Content may not be attention-grabbing enough — the visuals and copy might need to be reworked to attract interest.
-- Audience targeting may need adjustment — our AllInOneDM team can review your campaign results and fine-tune the audience settings for better performance.'),
+- Audience targeting may need adjustment — our Better Solutions team can review your campaign results and fine-tune the audience settings for better performance.'),
 
 (3, 'I''m not getting any orders', 'Low or no orders can happen for several reasons:
 - Low page followers reduce customer trust — people browse but don''t feel confident buying.
@@ -344,7 +344,7 @@ For new sales posts, since reactions and comments are still low, we suggest runn
 
 (9, 'Can you adjust my audience targeting?', 'Absolutely. We can review and fine-tune your audience targeting settings to improve campaign performance. Just let us know and we will analyze your current setup and make adjustments.'),
 
-(10, 'Can you help boost my orders?', 'Yes. We will run Message Objective campaigns to drive inquiries and orders. Our AllInOneDM team will carefully manage the campaign to maximize your conversions.'),
+(10, 'Can you help boost my orders?', 'Yes. We will run Message Objective campaigns to drive inquiries and orders. Our Better Solutions team will carefully manage the campaign to maximize your conversions.'),
 
 (11, 'I''m just starting a new page', 'We offer a Page Create & Setup Service for only 25,000 MMK. We will create your page, set up all settings including profile picture, cover photo, auto-replies, greeting messages, and FAQs — so your page looks professional and credible from day one.'),
 
@@ -610,9 +610,9 @@ Both include recorded video lessons and Messenger Q&A support.'),
 
 (82, 'I am asking about my active boost', 'Got it. Let me check your active campaign status and results. Please wait a moment.'),
 
-(83, 'Are these auto-replies?', 'Yes, I am AllInOneDM''s AI Digital Assistant. I''m here to help answer your questions quickly so you don''t have to wait. If you prefer to speak with a human, I can connect you to our Admin Team.'),
+(83, 'Are these auto-replies?', 'Yes, I am Better Solutions''s AI Digital Assistant. I''m here to help answer your questions quickly so you don''t have to wait. If you prefer to speak with a human, I can connect you to our Admin Team.'),
 
-(84, 'Is this a bot?', 'Yes, I am AllInOneDM''s AI Digital Assistant. I provide instant answers to common questions so you don''t have to wait. If you would prefer to speak with a real person, I can connect you to our Admin Team right away.'),
+(84, 'Is this a bot?', 'Yes, I am Better Solutions''s AI Digital Assistant. I provide instant answers to common questions so you don''t have to wait. If you would prefer to speak with a real person, I can connect you to our Admin Team right away.'),
 
 (85, 'Please connect me to a human', 'Of course. Please wait a moment while I connect you with our Admin Team.'),
 

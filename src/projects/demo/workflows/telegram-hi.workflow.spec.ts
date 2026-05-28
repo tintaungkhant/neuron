@@ -132,7 +132,7 @@ describe('demoTelegramHiWorkflow', () => {
     ]);
   });
 
-  it('sends the get_services tool spec and the AllInOneDM prompt to OpenRouter', async () => {
+  it('sends the get_services tool spec and the Better Solutions prompt to OpenRouter', async () => {
     const payload: TelegramWebhookPayload = {
       update_id: 1,
       message: {
@@ -156,7 +156,7 @@ describe('demoTelegramHiWorkflow', () => {
     };
 
     const system = body.messages.find((m) => m.role === 'system');
-    expect(system?.content).toMatch(/AllInOneDM/);
+    expect(system?.content).toMatch(/Better Solutions/);
 
     const toolNames = (body.tools ?? []).map((t) => t.function.name);
     expect(toolNames).toContain('get_services');

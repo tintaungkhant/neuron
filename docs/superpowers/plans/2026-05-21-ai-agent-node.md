@@ -1316,17 +1316,17 @@ git commit -m "feat(engine): register AI providers in EngineModule and export th
 
 ---
 
-### Task 9: Wire the agent into the allinonedm Telegram workflow
+### Task 9: Wire the agent into the demo Telegram workflow
 
 Replace the hard-coded `'hi'` reply with a real agent turn: webhook → agent → send. This is the end-to-end demo.
 
 **Files:**
-- Modify: `src/projects/allinonedm/workflows/telegram.workflow.ts`
-- Test: `src/projects/allinonedm/workflows/telegram.workflow.spec.ts` (create)
+- Modify: `src/projects/demo/workflows/telegram.workflow.ts`
+- Test: `src/projects/demo/workflows/telegram.workflow.spec.ts` (create)
 
 - [ ] **Step 1: Write the failing test file**
 
-Create `src/projects/allinonedm/workflows/telegram.workflow.spec.ts`:
+Create `src/projects/demo/workflows/telegram.workflow.spec.ts`:
 
 ```ts
 import { Test, TestingModule } from '@nestjs/testing';
@@ -1338,7 +1338,7 @@ import {
 } from '../../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
 import type { WorkflowInput } from '../../project.types';
-import type { AllInOneDMConfig } from '../allinonedm.config';
+import type { Better SolutionsConfig } from '../demo.config';
 import { telegramWorkflow } from './telegram.workflow';
 
 const fakeMemory: ChatMemory = {
@@ -1387,8 +1387,8 @@ describe('telegramWorkflow', () => {
   });
 
   it('runs webhook -> agent -> send and replies with the agent output', async () => {
-    const input: WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload> = {
-      project: { id: 'allinonedm', config: { telegramBotToken: 'BOTTOKEN' } },
+    const input: WorkflowInput<Better SolutionsConfig, TelegramWebhookPayload> = {
+      project: { id: 'demo', config: { telegramBotToken: 'BOTTOKEN' } },
       payload: {
         update_id: 1,
         message: {
@@ -1419,8 +1419,8 @@ describe('telegramWorkflow', () => {
   });
 
   it('ignores updates with no text', async () => {
-    const input: WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload> = {
-      project: { id: 'allinonedm', config: { telegramBotToken: 'BOTTOKEN' } },
+    const input: WorkflowInput<Better SolutionsConfig, TelegramWebhookPayload> = {
+      project: { id: 'demo', config: { telegramBotToken: 'BOTTOKEN' } },
       payload: {
         update_id: 2,
         message: {
@@ -1441,12 +1441,12 @@ describe('telegramWorkflow', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm test -- allinonedm/workflows/telegram.workflow`
+Run: `pnpm test -- demo/workflows/telegram.workflow`
 Expected: FAIL — the workflow still sends `'hi'`, so the trace has 2 steps (no `AiAgentNode`) and the Telegram body text is `'hi'`.
 
 - [ ] **Step 3: Rewrite the workflow**
 
-Replace the entire contents of `src/projects/allinonedm/workflows/telegram.workflow.ts` with:
+Replace the entire contents of `src/projects/demo/workflows/telegram.workflow.ts` with:
 
 ```ts
 import {
@@ -1461,10 +1461,10 @@ import {
 } from '../../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
 import type { WorkflowInput } from '../../project.types';
-import type { AllInOneDMConfig } from '../allinonedm.config';
+import type { Better SolutionsConfig } from '../demo.config';
 
 export const telegramWorkflow: WorkflowFn<
-  WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload>,
+  WorkflowInput<Better SolutionsConfig, TelegramWebhookPayload>,
   void
 > = async function telegramWorkflow(input, ctx) {
   const parsed = await ctx.run(TelegramWebhookNode, input.payload);
@@ -1488,7 +1488,7 @@ export const telegramWorkflow: WorkflowFn<
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm test -- allinonedm/workflows/telegram.workflow`
+Run: `pnpm test -- demo/workflows/telegram.workflow`
 Expected: PASS — both tests green.
 
 - [ ] **Step 5: Run the full test suite and build**
@@ -1501,8 +1501,8 @@ Expected: build succeeds.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/projects/allinonedm/workflows/telegram.workflow.ts src/projects/allinonedm/workflows/telegram.workflow.spec.ts
-git commit -m "feat(allinonedm): run the AI agent in the Telegram workflow"
+git add src/projects/demo/workflows/telegram.workflow.ts src/projects/demo/workflows/telegram.workflow.spec.ts
+git commit -m "feat(demo): run the AI agent in the Telegram workflow"
 ```
 
 ---

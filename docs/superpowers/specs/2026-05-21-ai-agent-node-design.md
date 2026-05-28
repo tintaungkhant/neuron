@@ -12,8 +12,8 @@
 > **Chat-model config revision (2026-05-22):** `OpenRouterChatModel` reads no
 > env. It is a plain class — not a NestJS provider — constructed with
 > `{ apiKey, model }`. Credentials and model id live in the project config; the
-> `allinonedm` config reads `ALLINONEDM_OPENROUTER_API_KEY` /
-> `ALLINONEDM_OPENROUTER_MODEL` and the workflow does
+> `demo` config reads `DEMO_OPENROUTER_API_KEY` /
+> `DEMO_OPENROUTER_MODEL` and the workflow does
 > `new OpenRouterChatModel(...)`. The sections below that show
 > `requireEnv('OPENROUTER_API_KEY')`, `OpenRouterChatModel` as an `@Injectable`
 > provider, or `ctx.get(OpenRouterChatModel)` are superseded by this note.
@@ -25,7 +25,7 @@ Add an `AiAgentNode` to the engine: a node that runs an LLM tool-calling loop. I
 takes four inputs — a payload, a chat model, a memory, and a set of tools —
 modeled after n8n's AI Agent node. This round ships the node, an OpenRouter chat
 model, a Postgres-backed memory, the tool *interface* (no concrete tools yet),
-and an end-to-end demo wired into the `allinonedm` Telegram workflow.
+and an end-to-end demo wired into the `demo` Telegram workflow.
 
 ## Approach
 
@@ -78,7 +78,7 @@ src/engine/db/                      NEW — Drizzle / Postgres
 src/engine/context.ts               MODIFY — add Context.get() + ContextImpl.get()
 src/engine/engine.module.ts         MODIFY — import DbModule; provide+export AI nodes
 src/engine/index.ts                 MODIFY — export AI ports + AiAgentNode
-src/projects/allinonedm/workflows/telegram.workflow.ts   MODIFY — wire the agent
+src/projects/demo/workflows/telegram.workflow.ts   MODIFY — wire the agent
 drizzle.config.ts                   NEW — drizzle-kit config (root)
 drizzle/                            NEW — generated migration SQL (committed)
 package.json                        MODIFY — deps, db:generate / db:migrate scripts
@@ -238,7 +238,7 @@ Mapping between our port types and the OpenAI wire format:
 - `ToolSpec` → `{type:'function', function:{name, description, parameters}}`.
 
 `requireEnv` is a small local helper (throws if the env var is missing), the same
-pattern already used in `allinonedm.config.ts`. `OpenRouterChatModel` defines its
+pattern already used in `demo.config.ts`. `OpenRouterChatModel` defines its
 own copy.
 
 The model id comes from `OPENROUTER_MODEL`. Per-agent model selection is out of
@@ -375,7 +375,7 @@ each project listing these providers itself.
 
 ## Data Flow
 
-The `allinonedm` Telegram workflow after wiring:
+The `demo` Telegram workflow after wiring:
 
 ```
 TelegramWebhookNode ──▶ AiAgentNode ──▶ TelegramSendMessageNode
@@ -387,7 +387,7 @@ TelegramWebhookNode ──▶ AiAgentNode ──▶ TelegramSendMessageNode
 
 ```ts
 export const telegramWorkflow: WorkflowFn<
-  WorkflowInput<AllInOneDMConfig, TelegramWebhookPayload>,
+  WorkflowInput<Better SolutionsConfig, TelegramWebhookPayload>,
   void
 > = async function telegramWorkflow(input, ctx) {
   const parsed = await ctx.run(TelegramWebhookNode, input.payload);
@@ -430,7 +430,7 @@ requests tools (none configured here, so this never fires yet) run them and loop
 
 Every throw bubbles through `ctx.run`, which records the failing step in the
 `Trace`, then `WorkflowEngine.run` wraps it in `WorkflowError` with the trace
-attached. The `allinonedm` controller already wraps `engine.run` in try/catch
+attached. The `demo` controller already wraps `engine.run` in try/catch
 and logs — unchanged.
 
 ## Testing

@@ -30,17 +30,17 @@ describe('GetPaymentMethodsTool', () => {
     const rows = [
       {
         id: 1,
-        name: 'KBZ Pay',
-        accountName: 'Better Solutions',
-        accountNumber: '09xxx',
-        note: 'mobile',
+        name: 'Kpay',
+        accountName: 'Aung Myat Min',
+        accountNumber: '09123456789',
+        note: 'Primary payment method',
       },
       {
         id: 2,
-        name: 'Bank Transfer',
-        accountName: 'Better Solutions Co.',
-        accountNumber: '0123-4567',
-        note: null,
+        name: 'Wave Pay',
+        accountName: 'Thazin Hlaing',
+        accountNumber: '09987654321',
+        note: 'Mobile wallet — instant transfers',
       },
     ];
     const from = jest.fn().mockResolvedValue(rows);
@@ -51,16 +51,16 @@ describe('GetPaymentMethodsTool', () => {
     expect(mockDb.select).toHaveBeenCalled();
     expect(out).toEqual([
       {
-        name: 'KBZ Pay',
-        accountName: 'Better Solutions',
-        accountNumber: '09xxx',
-        note: 'mobile',
+        name: 'Kpay',
+        accountName: 'Aung Myat Min',
+        accountNumber: '09123456789',
+        note: 'Primary payment method',
       },
       {
-        name: 'Bank Transfer',
-        accountName: 'Better Solutions Co.',
-        accountNumber: '0123-4567',
-        note: null,
+        name: 'Wave Pay',
+        accountName: 'Thazin Hlaing',
+        accountNumber: '09987654321',
+        note: 'Mobile wallet — instant transfers',
       },
     ]);
   });
