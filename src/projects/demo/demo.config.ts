@@ -3,6 +3,8 @@ export type DemoConfig = {
   telegramBotToken: string;
   openRouterApiKey: string;
   openRouterModel: string;
+  geminiApiKey: string;
+  geminiModel: string;
   databaseUrl: string;
 };
 
@@ -17,5 +19,7 @@ export const demoConfig: DemoConfig = {
   telegramBotToken: requireEnv('DEMO_TELEGRAM_BOT_TOKEN'),
   openRouterApiKey: requireEnv('DEMO_OPENROUTER_API_KEY'),
   openRouterModel: requireEnv('DEMO_OPENROUTER_MODEL'),
+  geminiApiKey: requireEnv('DEMO_GEMINI_API_KEY'),
+  geminiModel: requireEnv('DEMO_GEMINI_MODEL'),
   databaseUrl: requireEnv('DEMO_DATABASE_URL'),
 };

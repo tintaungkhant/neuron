@@ -1,8 +1,11 @@
 import { eq } from 'drizzle-orm';
 import {
   AiAgentNode,
+  GeminiReadImageNode,
+  GeminiUploadFileNode,
   OpenRouterChatModel,
   PgChatMemory,
+  TelegramGetFileNode,
   type WorkflowFn,
 } from '../../../engine';
 import {
@@ -60,6 +63,11 @@ Your job is to have a natural, helpful conversation — not to dump information.
 - When the customer sends something unrelated, acknowledge it briefly and steer back to how we can help their business.
 - Prefer asking one question at a time. It keeps the chat flowing naturally.`;
 
+const IMAGE_PROMPT = `Describe this image for a sales assistant. If it is a payment receipt or bank transfer slip, extract the amount, sender name, date, and reference/transaction number. Otherwise describe what is shown (product, ad, screenshot, etc.) concisely.`;
+
+// Telegram delivers photos as JPEG; PhotoSize carries no mime type.
+const PHOTO_MIME = 'image/jpeg';
+
 export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
   async function demoTelegramHiWorkflow(payload, wf) {
     const parsed = await wf.run(TelegramWebhookNode, payload);
@@ -76,10 +84,41 @@ export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
       });
     }
 
-    if (!parsed.text) return;
+    let agentInput: string;
+    const attachment = parsed.attachment;
+    if (attachment?.kind === 'photo') {
+      const file = await wf.run(TelegramGetFileNode, {
+        botToken: demoConfig.telegramBotToken,
+        fileId: attachment.fileId,
+      });
+      const fileSize = file.fileSize ?? attachment.fileSize;
+      if (fileSize == null) {
+        throw new Error('cannot determine image file size');
+      }
+      const uploaded = await wf.run(GeminiUploadFileNode, {
+        apiKey: demoConfig.geminiApiKey,
+        url: file.url,
+        mimeType: PHOTO_MIME,
+        fileSize,
+      });
+      const read = await wf.run(GeminiReadImageNode, {
+        apiKey: demoConfig.geminiApiKey,
+        model: demoConfig.geminiModel,
+        fileUri: uploaded.fileUri,
+        mimeType: PHOTO_MIME,
+        prompt: IMAGE_PROMPT,
+      });
+      const caption = parsed.text;
+      agentInput =
+        `[User sent an image. Contents: ${read.text}]` +
+        (caption ? `\n${caption}` : '');
+    } else {
+      if (!parsed.text) return;
+      agentInput = parsed.text;
+    }
 
     const agent = await wf.run(AiAgentNode, {
-      input: parsed.text,
+      input: agentInput,
       systemPrompt: SYSTEM_PROMPT,
       chatModel: new OpenRouterChatModel({
         apiKey: demoConfig.openRouterApiKey,
