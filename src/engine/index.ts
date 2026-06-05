@@ -32,11 +32,11 @@ export type {
   GeminiUploadFileInput,
   GeminiUploadFileOutput,
 } from './nodes/gemini/upload-file.node';
-export { GeminiReadImageNode } from './nodes/gemini/read-image.node';
+export { GeminiReadMediaNode } from './nodes/gemini/read-media.node';
 export type {
-  GeminiReadImageInput,
-  GeminiReadImageOutput,
-} from './nodes/gemini/read-image.node';
+  GeminiReadMediaInput,
+  GeminiReadMediaOutput,
+} from './nodes/gemini/read-media.node';
 export type {
   ChatRole,
   ToolCall,

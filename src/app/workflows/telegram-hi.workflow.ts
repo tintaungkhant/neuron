@@ -1,6 +1,6 @@
 import {
   AiAgentNode,
-  GeminiReadImageNode,
+  GeminiReadMediaNode,
   GeminiUploadFileNode,
   OpenRouterChatModel,
   PgChatMemory,
@@ -10,6 +10,7 @@ import {
 import {
   TelegramWebhookNode,
   type TelegramWebhookPayload,
+  type NormalizedAttachment,
 } from '../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../engine/nodes/telegram/send-message.node';
 import { appConfig } from '../config';
@@ -86,13 +87,62 @@ This overrides the conversational flow below: call the tool every time facts are
 
 const IMAGE_PROMPT = `Describe this image for a sales assistant. If it is a payment receipt or bank transfer slip, extract the amount, sender name, date, and reference/transaction number. Otherwise describe what is shown (product, ad, screenshot, etc.) concisely.`;
 
-// Telegram delivers photos as JPEG; PhotoSize carries no mime type.
-const PHOTO_MIME = 'image/jpeg';
+const VIDEO_PROMPT = `Describe this video for a sales assistant. Summarize what happens, transcribe any speech (keep the speaker's original language), and note on-screen text, products, or anything relevant to a customer inquiry. Be concise.`;
+
+const AUDIO_PROMPT = `Transcribe this audio for a sales assistant, keeping the speaker's original language. Then briefly note anything relevant to their inquiry (service interest, questions, payment). Be concise.`;
 
 // Shown to the customer on ANY failure — a fixed, non-technical apology so no
 // error detail (DB, API, timeout, …) ever leaks into the chat.
 const SORRY_MESSAGE =
   'တောင်းပန်ပါတယ်ရှင် 🙏 System error လေးဖြစ်နေလို့ ခဏနေ Admin မှ စာပြန်ပို့ပေးပါမယ်နော်။';
+
+// Sent when the attachment is a kind we don't read (animation, document, sticker).
+const UNSUPPORTED_MESSAGE =
+  'ဒီ file အမျိုးအစားကို လောလောဆယ် ဖတ်လို့မရသေးပါဘူးရှင် 🙏 စာသား (သို့) ပုံ၊ အသံ၊ ဗီဒီယို နဲ့ ပြန်ပို့ပေးပါနော်။';
+
+interface MediaPlan {
+  label: string; // how the attachment is described to the agent
+  mime: string;
+  prompt: string;
+  slow: boolean; // video/audio need a longer upload + processing window
+}
+
+// Maps a normalized attachment to a Gemini read plan, or null for kinds we
+// don't process (animation, document, sticker).
+function planMedia(att: NormalizedAttachment): MediaPlan | null {
+  switch (att.kind) {
+    case 'photo':
+      return {
+        label: 'an image',
+        mime: 'image/jpeg',
+        prompt: IMAGE_PROMPT,
+        slow: false,
+      };
+    case 'video':
+      return {
+        label: 'a video',
+        mime: att.mimeType ?? 'video/mp4',
+        prompt: VIDEO_PROMPT,
+        slow: true,
+      };
+    case 'audio':
+      return {
+        label: 'an audio message',
+        mime: att.mimeType ?? 'audio/mpeg',
+        prompt: AUDIO_PROMPT,
+        slow: true,
+      };
+    case 'voice':
+      return {
+        label: 'a voice message',
+        mime: att.mimeType ?? 'audio/ogg',
+        prompt: AUDIO_PROMPT,
+        slow: true,
+      };
+    default:
+      return null;
+  }
+}
 
 export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
   async function telegramWorkflow(payload, wf) {
@@ -113,31 +163,51 @@ export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
 
       let agentInput: string;
       const attachment = parsed.attachment;
-      if (attachment?.kind === 'photo') {
+      if (attachment) {
+        const plan = planMedia(attachment);
+        if (!plan) {
+          // animation / document / sticker — not something we read
+          await wf.run(TelegramSendMessageNode, {
+            botToken: appConfig.telegramBotToken,
+            chatId: parsed.chat.id,
+            text: UNSUPPORTED_MESSAGE,
+          });
+          return;
+        }
+
         const file = await wf.run(TelegramGetFileNode, {
           botToken: appConfig.telegramBotToken,
           fileId: attachment.fileId,
         });
         const fileSize = file.fileSize ?? attachment.fileSize;
         if (fileSize == null) {
-          throw new Error('cannot determine image file size');
+          throw new Error('cannot determine media file size');
         }
         const uploaded = await wf.run(GeminiUploadFileNode, {
           apiKey: appConfig.geminiApiKey,
           url: file.url,
-          mimeType: PHOTO_MIME,
+          mimeType: plan.mime,
           fileSize,
+          // video/audio take time to upload + process in the Files API
+          ...(plan.slow
+            ? {
+                uploadTimeoutMs: 300_000,
+                pollIntervalMs: 2_000,
+                maxPollAttempts: 60, // up to ~2 min of processing
+              }
+            : {}),
         });
-        const read = await wf.run(GeminiReadImageNode, {
+        const read = await wf.run(GeminiReadMediaNode, {
           apiKey: appConfig.geminiApiKey,
           model: appConfig.geminiModel,
           fileUri: uploaded.fileUri,
-          mimeType: PHOTO_MIME,
-          prompt: IMAGE_PROMPT,
+          mimeType: plan.mime,
+          prompt: plan.prompt,
+          ...(plan.slow ? { timeoutMs: 120_000 } : {}),
         });
         const caption = parsed.text;
         agentInput =
-          `[User sent an image. Contents: ${read.text}]` +
+          `[User sent ${plan.label}. Contents: ${read.text}]` +
           (caption ? `\n${caption}` : '');
       } else {
         if (!parsed.text) return;

@@ -341,7 +341,7 @@ describe('telegramWorkflow', () => {
       'TelegramWebhookNode',
       'TelegramGetFileNode',
       'GeminiUploadFileNode',
-      'GeminiReadImageNode',
+      'GeminiReadMediaNode',
       'AiAgentNode',
       'TelegramSendMessageNode',
     ]);
@@ -480,6 +480,149 @@ describe('telegramWorkflow', () => {
     expect(userMsg?.content).toBe(
       '[User sent an image. Contents: a cat photo]',
     );
+  });
+
+  it('reads a video via gemini and labels it for the agent', async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = urlOf(input);
+      if (url.includes('/getFile')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ok: true,
+              result: { file_path: 'videos/v.mp4', file_size: 500000 },
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes('/file/bot')) {
+        return Promise.resolve(new Response('vid-bytes', { status: 200 }));
+      }
+      if (url.includes('/upload/v1beta/files')) {
+        return Promise.resolve(
+          new Response(null, {
+            status: 200,
+            headers: { 'x-goog-upload-url': 'https://up.example/v' },
+          }),
+        );
+      }
+      if (url === 'https://up.example/v') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              file: {
+                name: 'files/v',
+                uri: 'https://files.example/v',
+                mimeType: 'video/mp4',
+                state: 'ACTIVE',
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes(':generateContent')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              candidates: [
+                { content: { parts: [{ text: 'a product demo video' }] } },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.startsWith('https://openrouter.ai/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              choices: [
+                { message: { role: 'assistant', content: 'agent reply' } },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
+    });
+
+    const payload: TelegramWebhookPayload = {
+      update_id: 20,
+      message: {
+        message_id: 21,
+        chat: { id: 99, type: 'private' },
+        date: 1700000000,
+        video: {
+          file_id: 'vid',
+          file_unique_id: 'u',
+          width: 640,
+          height: 480,
+          duration: 10,
+          mime_type: 'video/mp4',
+          file_size: 500000,
+        },
+      },
+    };
+
+    const { trace } = await engine.run(telegramWorkflow, payload);
+
+    expect(trace.steps.map((s) => s.name)).toEqual([
+      'TelegramWebhookNode',
+      'TelegramGetFileNode',
+      'GeminiUploadFileNode',
+      'GeminiReadMediaNode',
+      'AiAgentNode',
+      'TelegramSendMessageNode',
+    ]);
+
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
+    const orCall = calls.find(([u]) =>
+      urlOf(u).startsWith('https://openrouter.ai/'),
+    );
+    const orBody = JSON.parse(orCall![1].body as string) as {
+      messages: { role: string; content: string }[];
+    };
+    const userMsg = orBody.messages.find((m) => m.role === 'user');
+    expect(userMsg?.content).toBe(
+      '[User sent a video. Contents: a product demo video]',
+    );
+  });
+
+  it('tells the user when the attachment kind is unsupported', async () => {
+    const payload: TelegramWebhookPayload = {
+      update_id: 21,
+      message: {
+        message_id: 22,
+        chat: { id: 99, type: 'private' },
+        date: 1700000000,
+        document: {
+          file_id: 'doc1',
+          file_unique_id: 'u',
+          file_name: 'spec.pdf',
+          mime_type: 'application/pdf',
+          file_size: 1000,
+        },
+      },
+    };
+
+    const { trace } = await engine.run(telegramWorkflow, payload);
+
+    expect(trace.steps.map((s) => s.name)).toEqual([
+      'TelegramWebhookNode',
+      'TelegramSendMessageNode',
+    ]);
+
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
+    // no Gemini, no OpenRouter — just the unsupported reply
+    expect(
+      calls.some(([u]) => urlOf(u).startsWith('https://openrouter.ai/')),
+    ).toBe(false);
+    const tgCall = calls.find(([u]) => urlOf(u).includes('api.telegram.org'));
+    const body = JSON.parse(tgCall![1].body as string) as { text: string };
+    expect(body.text).toContain('ဖတ်လို့မရသေး'); // "can't read yet"
   });
 
   it('sends a canned apology and rethrows when the turn fails', async () => {

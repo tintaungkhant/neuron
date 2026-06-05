@@ -14,6 +14,8 @@ export interface GeminiUploadFileInput {
   displayName?: string;
   timeoutMs?: number; // source fetch / start / poll, defaults to 30s
   uploadTimeoutMs?: number; // the streamed byte upload, defaults to 120s
+  pollIntervalMs?: number; // wait between ACTIVE polls, defaults to 1s
+  maxPollAttempts?: number; // give up after this many polls, defaults to 10
 }
 
 export interface GeminiUploadFileOutput {
@@ -30,8 +32,8 @@ interface FilesApiFile {
   state: string;
 }
 
-const POLL_DELAY_MS = 1000;
-const MAX_POLL_ATTEMPTS = 10;
+const DEFAULT_POLL_DELAY_MS = 1000;
+const DEFAULT_MAX_POLL_ATTEMPTS = 10;
 
 @Injectable()
 export class GeminiUploadFileNode extends Node<
@@ -100,15 +102,18 @@ export class GeminiUploadFileNode extends Node<
     }
     let file = ((await uploadRes.json()) as { file: FilesApiFile }).file;
 
-    // 3. Poll until the file is ACTIVE (images are usually instant).
+    // 3. Poll until the file is ACTIVE. Images are instant; video/audio need
+    //    real processing time, so the poll window is caller-configurable.
+    const pollDelay = input.pollIntervalMs ?? DEFAULT_POLL_DELAY_MS;
+    const maxPolls = input.maxPollAttempts ?? DEFAULT_MAX_POLL_ATTEMPTS;
     let attempts = 0;
     while (file.state === 'PROCESSING') {
-      if (attempts >= MAX_POLL_ATTEMPTS) {
+      if (attempts >= maxPolls) {
         throw new Error(
           `files upload still processing after ${attempts} polls`,
         );
       }
-      await sleep(POLL_DELAY_MS);
+      await sleep(pollDelay);
       attempts++;
       const pollRes = await fetchWithTimeout(
         `${GEMINI_BASE}/v1beta/${file.name}?key=${input.apiKey}`,

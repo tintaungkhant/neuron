@@ -1,6 +1,6 @@
-import { GeminiReadImageNode } from './read-image.node';
+import { GeminiReadMediaNode } from './read-media.node';
 
-describe('GeminiReadImageNode', () => {
+describe('GeminiReadMediaNode', () => {
   let fetchSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe('GeminiReadImageNode', () => {
         { status: 200 },
       ),
     );
-    const node = new GeminiReadImageNode();
+    const node = new GeminiReadMediaNode();
     const out = await node.execute({
       apiKey: 'KEY',
       model: 'gemini-2.0-flash',
@@ -56,7 +56,7 @@ describe('GeminiReadImageNode', () => {
 
   it('throws when generateContent returns non-2xx', async () => {
     fetchSpy.mockResolvedValue(new Response('bad', { status: 400 }));
-    const node = new GeminiReadImageNode();
+    const node = new GeminiReadMediaNode();
     await expect(
       node.execute({
         apiKey: 'K',
@@ -72,7 +72,7 @@ describe('GeminiReadImageNode', () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify({ candidates: [] }), { status: 200 }),
     );
-    const node = new GeminiReadImageNode();
+    const node = new GeminiReadMediaNode();
     await expect(
       node.execute({
         apiKey: 'K',

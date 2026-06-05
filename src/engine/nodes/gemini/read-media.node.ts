@@ -5,7 +5,7 @@ import { fetchWithTimeout } from '../../http';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
-export interface GeminiReadImageInput {
+export interface GeminiReadMediaInput {
   apiKey: string;
   model: string;
   fileUri: string;
@@ -14,7 +14,7 @@ export interface GeminiReadImageInput {
   timeoutMs?: number; // defaults to 60s
 }
 
-export interface GeminiReadImageOutput {
+export interface GeminiReadMediaOutput {
   text: string;
 }
 
@@ -23,11 +23,11 @@ interface GenerateContentResponse {
 }
 
 @Injectable()
-export class GeminiReadImageNode extends Node<
-  GeminiReadImageInput,
-  GeminiReadImageOutput
+export class GeminiReadMediaNode extends Node<
+  GeminiReadMediaInput,
+  GeminiReadMediaOutput
 > {
-  async execute(input: GeminiReadImageInput): Promise<GeminiReadImageOutput> {
+  async execute(input: GeminiReadMediaInput): Promise<GeminiReadMediaOutput> {
     const res = await fetchWithTimeout(
       `${GEMINI_BASE}/v1beta/models/${input.model}:generateContent?key=${input.apiKey}`,
       {

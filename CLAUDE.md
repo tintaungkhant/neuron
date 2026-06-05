@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Neuron** — an AI workflow engine on NestJS 11. Two layers exist:
 
-- **Engine** (`src/engine/`) — runs code-defined workflows, ships built-in nodes (telegram, gemini image, AI agent), Postgres-backed chat memory, and execution-trace persistence. This is the reusable core, intended to be extracted into its own package later. **It imports nothing from `src/app/`** — that one-way dependency is what keeps extraction cheap; never break it.
+- **Engine** (`src/engine/`) — runs code-defined workflows, ships built-in nodes (telegram, gemini media, AI agent), Postgres-backed chat memory, and execution-trace persistence. This is the reusable core, intended to be extracted into its own package later. **It imports nothing from `src/app/`** — that one-way dependency is what keeps extraction cheap; never break it.
 - **App** (`src/app/`) — the single business application (a Telegram sales bot). Its controller(s), workflows, tools, DB schema, and config live here, wired directly into `AppModule` (`src/app.module.ts`).
 
 Multi-project support was removed: there is one business app, not a `src/projects/<name>/` registry. The engine is extracted later, on the rule of three. Engine and app **share one Postgres database** (`DATABASE_URL`) but keep separate schemas and separate migration histories.

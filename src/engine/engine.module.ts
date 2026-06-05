@@ -3,7 +3,7 @@ import { WorkflowEngine } from './engine';
 import { AiAgentNode } from './nodes/ai/agent.node';
 import { TelegramGetFileNode } from './nodes/telegram/get-file.node';
 import { GeminiUploadFileNode } from './nodes/gemini/upload-file.node';
-import { GeminiReadImageNode } from './nodes/gemini/read-image.node';
+import { GeminiReadMediaNode } from './nodes/gemini/read-media.node';
 import { ExecutionStore } from './executions/execution-store';
 import { DbShutdown } from './db/db-shutdown';
 
@@ -13,7 +13,7 @@ import { DbShutdown } from './db/db-shutdown';
     AiAgentNode,
     TelegramGetFileNode,
     GeminiUploadFileNode,
-    GeminiReadImageNode,
+    GeminiReadMediaNode,
     ExecutionStore,
     DbShutdown,
   ],
@@ -22,7 +22,7 @@ import { DbShutdown } from './db/db-shutdown';
     AiAgentNode,
     TelegramGetFileNode,
     GeminiUploadFileNode,
-    GeminiReadImageNode,
+    GeminiReadMediaNode,
     ExecutionStore,
   ],
 })
