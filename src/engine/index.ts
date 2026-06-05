@@ -11,6 +11,21 @@ export type { AiAgentInput, AiAgentOutput } from './nodes/ai/agent.node';
 export { OpenRouterChatModel } from './nodes/ai/openrouter-chat-model';
 export type { OpenRouterChatModelOptions } from './nodes/ai/openrouter-chat-model';
 export { PgChatMemory } from './nodes/ai/pg-chat-memory';
+export { TelegramGetFileNode } from './nodes/telegram/get-file.node';
+export type {
+  TelegramGetFileInput,
+  TelegramGetFileOutput,
+} from './nodes/telegram/get-file.node';
+export { GeminiUploadFileNode } from './nodes/gemini/upload-file.node';
+export type {
+  GeminiUploadFileInput,
+  GeminiUploadFileOutput,
+} from './nodes/gemini/upload-file.node';
+export { GeminiReadImageNode } from './nodes/gemini/read-image.node';
+export type {
+  GeminiReadImageInput,
+  GeminiReadImageOutput,
+} from './nodes/gemini/read-image.node';
 export type {
   ChatRole,
   ToolCall,
