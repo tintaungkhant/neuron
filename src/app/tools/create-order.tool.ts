@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
-import type { AgentTool } from '../../../engine';
-import { demoDb } from '../db/client';
+import type { AgentTool } from '../../engine';
+import { appDb } from '../db/client';
 import { chats, orders } from '../db/schema';
 
 export type CreateOrderToolOptions = {
@@ -36,7 +36,7 @@ export class CreateOrderTool implements AgentTool {
       throw new Error('create_order: summary is required');
     }
 
-    const chatRow = await demoDb
+    const chatRow = await appDb
       .select({ id: chats.id })
       .from(chats)
       .where(eq(chats.extId, this.opts.chatExtId))
@@ -47,7 +47,7 @@ export class CreateOrderTool implements AgentTool {
       );
     }
 
-    const inserted = await demoDb
+    const inserted = await appDb
       .insert(orders)
       .values({ chatId: chatRow[0].id, summary })
       .returning({ id: orders.id });

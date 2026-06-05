@@ -7,14 +7,14 @@ import {
   PgChatMemory,
   TelegramGetFileNode,
   type WorkflowFn,
-} from '../../../engine';
+} from '../../engine';
 import {
   TelegramWebhookNode,
   type TelegramWebhookPayload,
-} from '../../../engine/nodes/telegram/webhook.node';
-import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
-import { demoConfig } from '../demo.config';
-import { demoDb } from '../db/client';
+} from '../../engine/nodes/telegram/webhook.node';
+import { TelegramSendMessageNode } from '../../engine/nodes/telegram/send-message.node';
+import { appConfig } from '../config';
+import { appDb } from '../db/client';
 import { chats } from '../db/schema';
 import { CreateOrderTool } from '../tools/create-order.tool';
 import { GetFaqsTool } from '../tools/get-faqs.tool';
@@ -89,17 +89,17 @@ const IMAGE_PROMPT = `Describe this image for a sales assistant. If it is a paym
 // Telegram delivers photos as JPEG; PhotoSize carries no mime type.
 const PHOTO_MIME = 'image/jpeg';
 
-export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
-  async function demoTelegramHiWorkflow(payload, wf) {
+export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
+  async function telegramWorkflow(payload, wf) {
     const parsed = await wf.run(TelegramWebhookNode, payload);
 
-    const existing = await demoDb
+    const existing = await appDb
       .select({ id: chats.id })
       .from(chats)
       .where(eq(chats.extId, parsed.chat.id))
       .limit(1);
     if (existing.length === 0) {
-      await demoDb.insert(chats).values({
+      await appDb.insert(chats).values({
         extId: parsed.chat.id,
         name: parsed.from?.username ?? parsed.from?.firstName ?? null,
       });
@@ -109,7 +109,7 @@ export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
     const attachment = parsed.attachment;
     if (attachment?.kind === 'photo') {
       const file = await wf.run(TelegramGetFileNode, {
-        botToken: demoConfig.telegramBotToken,
+        botToken: appConfig.telegramBotToken,
         fileId: attachment.fileId,
       });
       const fileSize = file.fileSize ?? attachment.fileSize;
@@ -117,14 +117,14 @@ export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
         throw new Error('cannot determine image file size');
       }
       const uploaded = await wf.run(GeminiUploadFileNode, {
-        apiKey: demoConfig.geminiApiKey,
+        apiKey: appConfig.geminiApiKey,
         url: file.url,
         mimeType: PHOTO_MIME,
         fileSize,
       });
       const read = await wf.run(GeminiReadImageNode, {
-        apiKey: demoConfig.geminiApiKey,
-        model: demoConfig.geminiModel,
+        apiKey: appConfig.geminiApiKey,
+        model: appConfig.geminiModel,
         fileUri: uploaded.fileUri,
         mimeType: PHOTO_MIME,
         prompt: IMAGE_PROMPT,
@@ -142,11 +142,11 @@ export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
       input: agentInput,
       systemPrompt: SYSTEM_PROMPT,
       chatModel: new OpenRouterChatModel({
-        apiKey: demoConfig.openRouterApiKey,
-        model: demoConfig.openRouterModel,
+        apiKey: appConfig.openRouterApiKey,
+        model: appConfig.openRouterModel,
       }),
       memory: new PgChatMemory({
-        sessionId: `${demoConfig.id}:${parsed.chat.id}`,
+        sessionId: `${appConfig.id}:${parsed.chat.id}`,
       }),
       tools: [
         new GetServicesTool(),
@@ -157,7 +157,7 @@ export const demoTelegramHiWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
     });
 
     await wf.run(TelegramSendMessageNode, {
-      botToken: demoConfig.telegramBotToken,
+      botToken: appConfig.telegramBotToken,
       chatId: parsed.chat.id,
       text: agent.output,
     });

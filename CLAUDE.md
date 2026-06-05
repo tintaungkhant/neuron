@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Neuron** — an AI workflow engine on NestJS 11. Two layers exist:
 
-- **Engine** (`src/engine/`) — runs code-defined workflows, ships built-in nodes, including an AI agent node with an OpenRouter chat model and Postgres-backed memory.
-- **Projects** (`src/projects/`) — self-contained feature modules (currently `demo`) that wire workflows to HTTP triggers. Projects may own their own DB.
+- **Engine** (`src/engine/`) — runs code-defined workflows, ships built-in nodes (telegram, gemini image, AI agent), Postgres-backed chat memory, and execution-trace persistence. This is the reusable core, intended to be extracted into its own package later. **It imports nothing from `src/app/`** — that one-way dependency is what keeps extraction cheap; never break it.
+- **App** (`src/app/`) — the single business application (a Telegram sales bot). Its controller(s), workflows, tools, DB schema, and config live here, wired directly into `AppModule` (`src/app.module.ts`).
 
-`AppController` / `AppService` are leftover scaffold placeholders — not used by the engine or projects. New domain code goes in dedicated Nest modules, never bolted onto `AppModule`.
+Multi-project support was removed: there is one business app, not a `src/projects/<name>/` registry. The engine is extracted later, on the rule of three. Engine and app **share one Postgres database** (`DATABASE_URL`) but keep separate schemas and separate migration histories.
 
 ## Commands
 
@@ -32,24 +32,27 @@ pnpm test:e2e             # uses test/jest-e2e.json (rootDir = ./test, *.e2e-spe
 
 pnpm db:generate          # drizzle-kit: regenerate engine migration SQL from src/engine/db/schema.ts
 pnpm db:migrate           # drizzle-kit: apply engine migrations to DATABASE_URL
-pnpm db:demo:generate     # demo-project migration SQL from src/projects/demo/db/schema.ts (uses drizzle.demo.config.ts)
-pnpm db:demo:migrate      # apply demo migrations to DEMO_DATABASE_URL
+pnpm db:app:generate      # app migration SQL from src/app/db/schema.ts (uses drizzle.app.config.ts)
+pnpm db:app:migrate       # apply app migrations to DATABASE_URL (separate tracking table __drizzle_migrations_app)
+pnpm db:app:seed          # ts-node src/app/db/seed.ts — loads demo.sql into the app tables
 ```
+
+Engine migrations live in `drizzle/`, app migrations in `drizzle-app/`. Both target the same `DATABASE_URL` database; the app config sets `migrations.table = __drizzle_migrations_app` so the two histories don't collide. Both drizzle configs (`drizzle.config.ts`, `drizzle.app.config.ts`) are at the repo root and excluded from the Nest build.
 
 Jest unit config lives inline in `package.json` (rootDir = `src`, regex = `.*\.spec\.ts$`). E2E config is `test/jest-e2e.json`. They are separate runners — `pnpm test` does NOT pick up e2e specs.
 
 ## Environment
 
-`.env` is loaded by `src/load-env.ts` — a manual parser, imported as a side effect at the top of `src/main.ts` and registered as a jest `setupFiles` entry. Node and jest do **not** auto-load `.env`, hence the manual loader. `drizzle.config.ts` imports it too so `pnpm db:migrate` sees `DATABASE_URL`.
+`.env` is loaded by `src/load-env.ts` — a manual parser, imported as a side effect at the top of `src/main.ts` and registered as a jest `setupFiles` entry. Node and jest do **not** auto-load `.env`, hence the manual loader. Both drizzle configs import it too so the `db:*` scripts see `DATABASE_URL`.
 
 Expected keys:
 
-- `DATABASE_URL` — Postgres connection string for engine chat memory (`agent_messages` table).
-- `DEMO_TELEGRAM_BOT_TOKEN` — demo project's Telegram bot token.
-- `DEMO_OPENROUTER_API_KEY`, `DEMO_OPENROUTER_MODEL` — demo project's OpenRouter credentials/model.
-- `DEMO_DATABASE_URL` — Postgres connection string for the demo project's own DB (`services` table). Same host as `DATABASE_URL`, different database.
+- `DATABASE_URL` — the one Postgres connection string for everything: engine tables (`agent_messages`, `executions`) and app tables (`services`, `chats`, `orders`, `faqs`, `payment_methods`).
+- `TELEGRAM_BOT_TOKEN` — the app's Telegram bot token.
+- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` — the conversational agent's OpenRouter credentials/model.
+- `GEMINI_API_KEY`, `GEMINI_MODEL` — native Gemini (Files API) credentials for reading images.
 
-Env is per-project: each project's `*.config.ts` reads its own keys (`requireEnv`) at import time and packs them into the project config object. `OpenRouterChatModel` never reads env — it takes `{ apiKey, model }` in its constructor, supplied from project config.
+The app's `src/app/config.ts` reads these keys (`requireEnv`) at import time into the `appConfig` singleton. `OpenRouterChatModel` never reads env — it takes `{ apiKey, model }` in its constructor, supplied from `appConfig`. `src/app/db/client.ts` reads `DATABASE_URL` directly for its own `pg` pool.
 
 `.env` is gitignored. Tests set the env vars they need themselves; engine providers never read env, so importing `EngineModule` in a spec never requires real credentials.
 
@@ -79,22 +82,22 @@ Generic, reusable nodes. `telegram/` — `TelegramWebhookNode` (parses an update
 
 ### Database (`src/engine/db/`)
 
-Drizzle ORM + `pg`. `client.ts` constructs the `pg` `Pool` and Drizzle handle at module load and exports a singleton `db` plus an idempotent `closeDb()`. `DbShutdown` (an `@Injectable()` provider in `EngineModule`) calls `closeDb()` on `beforeApplicationShutdown` — that's the only DI plumbing the DB has. Schema in `schema.ts` (`agent_messages`). Migration SQL is generated under `drizzle/` and committed; `drizzle.config.ts` is at the repo root and excluded from the Nest build.
+Drizzle ORM + `pg`. `client.ts` constructs the `pg` `Pool` and Drizzle handle at module load and exports a singleton `db` plus an idempotent `closeDb()`. `DbShutdown` (an `@Injectable()` provider in `EngineModule`) calls `closeDb()` on `beforeApplicationShutdown` — that's the only DI plumbing the DB has. Schema in `schema.ts` (`agent_messages`, `executions`). `ExecutionStore` (an `EngineModule` provider) persists each run's enriched `Trace` as a row in `executions`; the app controller calls `executions.save(trace)` after `engine.run`. Migration SQL is generated under `drizzle/` and committed; `drizzle.config.ts` is at the repo root and excluded from the Nest build.
 
-### Projects (`src/projects/`)
+### App (`src/app/`)
 
-Each project is a self-contained Nest module imported by `AppModule` — its own controllers, workflows, tools, DB, and config. There is no central project registry. The workflow takes the trigger payload directly as `input` (e.g. `WorkflowFn<TelegramWebhookPayload, void>`); per-project config (`id`, tokens, keys, db URL) lives as a module-level singleton (`demoConfig`) the workflow imports.
+The single business app — controllers, workflows, tools, DB, and config — wired directly into `AppModule` (`src/app.module.ts`). The workflow takes the trigger payload directly as `input` (e.g. `WorkflowFn<TelegramWebhookPayload, void>`); app config (`id`, tokens, keys) lives as a module-level singleton (`appConfig` in `src/app/config.ts`) the workflow imports.
 
-**Triggers are plain NestJS** — a project exposes a controller (e.g. a Telegram webhook `@Post`) that calls `WorkflowEngine.run(...)`. Triggers are not an engine abstraction; do not build a trigger/dispatcher layer.
+**Triggers are plain NestJS** — the app exposes a controller (the Telegram webhook `@Post`) that calls `WorkflowEngine.run(...)`. Triggers are not an engine abstraction; do not build a trigger/dispatcher layer.
 
-**Project-owned DB pattern (demo):** `src/projects/demo/db/` mirrors the engine pattern — `schema.ts` (services table), `client.ts` (singleton `demoDb` + idempotent `closeDemoDb()`), `db-shutdown.ts` (`@Injectable()` `BeforeApplicationShutdown` provider registered in `DemoModule`). Migrations live under `drizzle-demo/`, generated/applied via the `db:demo:*` scripts using `drizzle.demo.config.ts` at the repo root (excluded from the Nest build).
+**App DB pattern:** `src/app/db/` mirrors the engine pattern — `schema.ts` (services, chats, orders, faqs, payment_methods), `client.ts` (singleton `appDb` + idempotent `closeAppDb()`, reading `DATABASE_URL` directly), `db-shutdown.ts` (`@Injectable()` `AppDbShutdown` registered in `AppModule`). App tables live in the **same database** as the engine; migrations live under `drizzle-app/`, applied via `db:app:*` using `drizzle.app.config.ts` (separate `__drizzle_migrations_app` tracking table).
 
-**Project-owned tools:** project-specific `AgentTool`s (e.g. `GetServicesTool`) live under `src/projects/<name>/tools/`. The workflow constructs them inline (`new GetServicesTool()`) and passes them in `tools: [...]` on the agent input. Tools read from the project's own DB singleton, not the engine DB.
+**App tools:** app `AgentTool`s (e.g. `GetServicesTool`) live under `src/app/tools/`. The workflow constructs them inline (`new GetServicesTool()`) and passes them in `tools: [...]` on the agent input. Tools read from `appDb`, not the engine `db`.
 
 ### Misc
 
 - Entry: `src/main.ts` imports `./load-env` first, bootstraps `AppModule`, calls `enableShutdownHooks()`, listens on `process.env.PORT ?? 3000`. No global pipes/filters/interceptors yet — add them here when introduced.
-- TypeScript is `nodenext` (CommonJS output, no `"type": "module"`). `tsconfig.build.json` excludes tests and both drizzle config files (`drizzle.config.ts`, `drizzle.demo.config.ts`) from production builds.
+- TypeScript is `nodenext` (CommonJS output, no `"type": "module"`). `tsconfig.build.json` excludes tests and both drizzle config files (`drizzle.config.ts`, `drizzle.app.config.ts`) from production builds.
 - ESLint flat config (`eslint.config.mjs`) uses `typescript-eslint` + Prettier; lint is `--fix` by default, so running it will modify files.
 
 Design docs live in `docs/superpowers/specs/` — the workflow engine and AI agent node designs are the authoritative reference.

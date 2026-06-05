@@ -6,6 +6,6 @@
     "dist",
     "**/*spec.ts",
     "drizzle.config.ts",
-    "drizzle.demo.config.ts"
+    "drizzle.app.config.ts"
   ]
 }

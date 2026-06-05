@@ -1,14 +1,14 @@
 jest.mock('../db/client', () => ({
-  demoDb: {
+  appDb: {
     select: jest.fn(),
   },
-  closeDemoDb: jest.fn(),
+  closeAppDb: jest.fn(),
 }));
 
-import { demoDb } from '../db/client';
+import { appDb } from '../db/client';
 import { GetPaymentMethodsTool } from './get-payment-methods.tool';
 
-const mockDb = demoDb as unknown as { select: jest.Mock };
+const mockDb = appDb as unknown as { select: jest.Mock };
 
 beforeEach(() => {
   mockDb.select.mockReset();

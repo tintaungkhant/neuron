@@ -6,13 +6,13 @@ import {
   enrichTrace,
   formatTrace,
   type Trace,
-} from '../../../engine';
-import type { TelegramWebhookPayload } from '../../../engine/nodes/telegram/webhook.node';
-import { demoTelegramHiWorkflow } from '../workflows/telegram-hi.workflow';
+} from '../../engine';
+import type { TelegramWebhookPayload } from '../../engine/nodes/telegram/webhook.node';
+import { telegramWorkflow } from '../workflows/telegram-hi.workflow';
 
 @Controller('api/demo/telegram')
-export class DemoTelegramController {
-  private readonly logger = new Logger(DemoTelegramController.name);
+export class TelegramController {
+  private readonly logger = new Logger(TelegramController.name);
 
   constructor(
     private readonly engine: WorkflowEngine,
@@ -23,7 +23,7 @@ export class DemoTelegramController {
   @HttpCode(200)
   async webhook(@Body() update: TelegramWebhookPayload): Promise<{ ok: true }> {
     try {
-      const { trace } = await this.engine.run(demoTelegramHiWorkflow, update);
+      const { trace } = await this.engine.run(telegramWorkflow, update);
       await this.record(trace);
     } catch (e) {
       // WorkflowError carries the partial trace — record the flow up to the break.

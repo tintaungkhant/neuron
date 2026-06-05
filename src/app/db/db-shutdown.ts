@@ -1,9 +1,9 @@
 import { Injectable, type BeforeApplicationShutdown } from '@nestjs/common';
-import { closeDemoDb } from './client';
+import { closeAppDb } from './client';
 
 @Injectable()
-export class DemoDbShutdown implements BeforeApplicationShutdown {
+export class AppDbShutdown implements BeforeApplicationShutdown {
   async beforeApplicationShutdown(): Promise<void> {
-    await closeDemoDb();
+    await closeAppDb();
   }
 }

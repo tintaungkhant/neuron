@@ -1,15 +1,15 @@
 jest.mock('../db/client', () => ({
-  demoDb: {
+  appDb: {
     select: jest.fn(),
     insert: jest.fn(),
   },
-  closeDemoDb: jest.fn(),
+  closeAppDb: jest.fn(),
 }));
 
-import { demoDb } from '../db/client';
+import { appDb } from '../db/client';
 import { CreateOrderTool } from './create-order.tool';
 
-const mockDb = demoDb as unknown as {
+const mockDb = appDb as unknown as {
   select: jest.Mock;
   insert: jest.Mock;
 };

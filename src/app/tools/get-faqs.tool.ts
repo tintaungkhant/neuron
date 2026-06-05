@@ -1,5 +1,5 @@
-import type { AgentTool } from '../../../engine';
-import { demoDb } from '../db/client';
+import type { AgentTool } from '../../engine';
+import { appDb } from '../db/client';
 import { faqs } from '../db/schema';
 
 export type Faq = {
@@ -18,7 +18,7 @@ export class GetFaqsTool implements AgentTool {
   };
 
   async execute(): Promise<Faq[]> {
-    const rows = await demoDb.select().from(faqs);
+    const rows = await appDb.select().from(faqs);
     return rows.map((r) => ({
       question: r.question,
       answer: r.answer,

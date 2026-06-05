@@ -1,5 +1,5 @@
-import type { AgentTool } from '../../../engine';
-import { demoDb } from '../db/client';
+import type { AgentTool } from '../../engine';
+import { appDb } from '../db/client';
 import { services } from '../db/schema';
 
 export type Service = {
@@ -20,7 +20,7 @@ export class GetServicesTool implements AgentTool {
   };
 
   async execute(): Promise<Service[]> {
-    const rows = await demoDb.select().from(services);
+    const rows = await appDb.select().from(services);
     return rows.map((r) => ({
       name: r.name,
       description: r.description,

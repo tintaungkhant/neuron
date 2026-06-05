@@ -1,21 +1,21 @@
-jest.mock('../../../engine/nodes/ai/pg-chat-memory', () => ({
+jest.mock('../../engine/nodes/ai/pg-chat-memory', () => ({
   PgChatMemory: jest.fn(),
 }));
 
 jest.mock('../db/client', () => ({
-  demoDb: { select: jest.fn(), insert: jest.fn() },
-  closeDemoDb: jest.fn(),
+  appDb: { select: jest.fn(), insert: jest.fn() },
+  closeAppDb: jest.fn(),
 }));
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { EngineModule, WorkflowEngine, PgChatMemory } from '../../../engine';
-import { demoDb } from '../db/client';
-import { TelegramWebhookNode } from '../../../engine/nodes/telegram/webhook.node';
-import type { TelegramWebhookPayload } from '../../../engine/nodes/telegram/webhook.node';
-import { TelegramSendMessageNode } from '../../../engine/nodes/telegram/send-message.node';
-import { demoTelegramHiWorkflow } from './telegram-hi.workflow';
+import { EngineModule, WorkflowEngine, PgChatMemory } from '../../engine';
+import { appDb } from '../db/client';
+import { TelegramWebhookNode } from '../../engine/nodes/telegram/webhook.node';
+import type { TelegramWebhookPayload } from '../../engine/nodes/telegram/webhook.node';
+import { TelegramSendMessageNode } from '../../engine/nodes/telegram/send-message.node';
+import { telegramWorkflow } from './telegram-hi.workflow';
 
-const mockDemoDb = demoDb as unknown as {
+const mockAppDb = appDb as unknown as {
   select: jest.Mock;
   insert: jest.Mock;
 };
@@ -26,7 +26,7 @@ function urlOf(input: RequestInfo | URL): string {
   return input.url;
 }
 
-describe('demoTelegramHiWorkflow', () => {
+describe('telegramWorkflow', () => {
   let mod: TestingModule;
   let engine: WorkflowEngine;
   let fetchSpy: jest.SpyInstance;
@@ -41,14 +41,14 @@ describe('demoTelegramHiWorkflow', () => {
     };
     (PgChatMemory as unknown as jest.Mock).mockImplementation(() => memory);
 
-    mockDemoDb.select.mockReset();
-    mockDemoDb.insert.mockReset();
+    mockAppDb.select.mockReset();
+    mockAppDb.insert.mockReset();
     chatLookupLimit = jest.fn().mockResolvedValue([]); // default: chat is new
     const where = jest.fn().mockReturnValue({ limit: chatLookupLimit });
     const from = jest.fn().mockReturnValue({ where });
-    mockDemoDb.select.mockReturnValue({ from });
+    mockAppDb.select.mockReturnValue({ from });
     chatInsertValues = jest.fn().mockResolvedValue(undefined);
-    mockDemoDb.insert.mockReturnValue({ values: chatInsertValues });
+    mockAppDb.insert.mockReturnValue({ values: chatInsertValues });
 
     mod = await Test.createTestingModule({
       imports: [EngineModule],
@@ -90,9 +90,9 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    const { trace } = await engine.run(demoTelegramHiWorkflow, payload);
+    const { trace } = await engine.run(telegramWorkflow, payload);
 
-    expect(trace.workflowName).toBe('demoTelegramHiWorkflow');
+    expect(trace.workflowName).toBe('telegramWorkflow');
     expect(trace.status).toBe('ok');
     expect(trace.steps.map((s) => s.name)).toEqual([
       'TelegramWebhookNode',
@@ -122,9 +122,9 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    await engine.run(demoTelegramHiWorkflow, payload);
+    await engine.run(telegramWorkflow, payload);
 
-    expect(PgChatMemory).toHaveBeenCalledWith({ sessionId: 'demo:99' });
+    expect(PgChatMemory).toHaveBeenCalledWith({ sessionId: 'app:99' });
     expect(memory.load).toHaveBeenCalledWith();
     expect(memory.append).toHaveBeenCalledWith([
       { role: 'user', content: 'hello bot' },
@@ -143,7 +143,7 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    await engine.run(demoTelegramHiWorkflow, payload);
+    await engine.run(telegramWorkflow, payload);
 
     const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
     const orCall = calls.find(([u]) =>
@@ -172,12 +172,12 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    const { trace } = await engine.run(demoTelegramHiWorkflow, payload);
+    const { trace } = await engine.run(telegramWorkflow, payload);
 
     expect(trace.steps.map((s) => s.name)).toEqual(['TelegramWebhookNode']);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(memory.load).not.toHaveBeenCalled();
-    expect(mockDemoDb.insert).toHaveBeenCalled();
+    expect(mockAppDb.insert).toHaveBeenCalled();
     expect(chatInsertValues).toHaveBeenCalledWith({
       extId: 1,
       name: null,
@@ -201,10 +201,10 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    await engine.run(demoTelegramHiWorkflow, payload);
+    await engine.run(telegramWorkflow, payload);
 
     expect(chatLookupLimit).toHaveBeenCalledWith(1);
-    expect(mockDemoDb.insert).toHaveBeenCalled();
+    expect(mockAppDb.insert).toHaveBeenCalled();
     expect(chatInsertValues).toHaveBeenCalledWith({
       extId: 42,
       name: 'tin_dev',
@@ -227,7 +227,7 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    await engine.run(demoTelegramHiWorkflow, payload);
+    await engine.run(telegramWorkflow, payload);
 
     expect(chatInsertValues).toHaveBeenCalledWith({
       extId: 43,
@@ -330,7 +330,7 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    const { trace } = await engine.run(demoTelegramHiWorkflow, payload);
+    const { trace } = await engine.run(telegramWorkflow, payload);
 
     expect(trace.status).toBe('ok');
     expect(trace.steps.map((s) => s.name)).toEqual([
@@ -463,7 +463,7 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    await engine.run(demoTelegramHiWorkflow, payload);
+    await engine.run(telegramWorkflow, payload);
 
     const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
     const orCall = calls.find(([u]) =>
@@ -497,8 +497,8 @@ describe('demoTelegramHiWorkflow', () => {
       },
     };
 
-    await engine.run(demoTelegramHiWorkflow, payload);
+    await engine.run(telegramWorkflow, payload);
 
-    expect(mockDemoDb.insert).not.toHaveBeenCalled();
+    expect(mockAppDb.insert).not.toHaveBeenCalled();
   });
 });

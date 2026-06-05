@@ -1,11 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { ExecutionStore, WorkflowEngine } from '../../../engine';
-import { demoTelegramHiWorkflow } from '../workflows/telegram-hi.workflow';
-import { DemoTelegramController } from './telegram.controller';
+import { ExecutionStore, WorkflowEngine } from '../../engine';
+import { telegramWorkflow } from '../workflows/telegram-hi.workflow';
+import { TelegramController } from './telegram.controller';
 
-describe('DemoTelegramController', () => {
+describe('TelegramController', () => {
   let app: INestApplication;
   let runMock: jest.Mock;
   let saveMock: jest.Mock;
@@ -14,7 +14,7 @@ describe('DemoTelegramController', () => {
     runMock = jest.fn().mockResolvedValue({
       result: undefined,
       trace: {
-        workflowName: 'demoTelegramHiWorkflow',
+        workflowName: 'telegramWorkflow',
         startedAt: 0,
         finishedAt: 0,
         status: 'ok',
@@ -24,7 +24,7 @@ describe('DemoTelegramController', () => {
     });
     saveMock = jest.fn().mockResolvedValue(1);
     const mod: TestingModule = await Test.createTestingModule({
-      controllers: [DemoTelegramController],
+      controllers: [TelegramController],
       providers: [
         { provide: WorkflowEngine, useValue: { run: runMock } },
         { provide: ExecutionStore, useValue: { save: saveMock } },
@@ -58,7 +58,7 @@ describe('DemoTelegramController', () => {
 
     expect(runMock).toHaveBeenCalledTimes(1);
     const [wf, input] = runMock.mock.calls[0] as [unknown, unknown];
-    expect(wf).toBe(demoTelegramHiWorkflow);
+    expect(wf).toBe(telegramWorkflow);
     expect(input).toEqual(update);
     expect(saveMock).toHaveBeenCalledTimes(1);
   });

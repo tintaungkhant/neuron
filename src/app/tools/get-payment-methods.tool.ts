@@ -1,5 +1,5 @@
-import type { AgentTool } from '../../../engine';
-import { demoDb } from '../db/client';
+import type { AgentTool } from '../../engine';
+import { appDb } from '../db/client';
 import { paymentMethods } from '../db/schema';
 
 export type PaymentMethod = {
@@ -20,7 +20,7 @@ export class GetPaymentMethodsTool implements AgentTool {
   };
 
   async execute(): Promise<PaymentMethod[]> {
-    const rows = await demoDb.select().from(paymentMethods);
+    const rows = await appDb.select().from(paymentMethods);
     return rows.map((r) => ({
       name: r.name,
       accountName: r.accountName,
