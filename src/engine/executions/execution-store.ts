@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { executions } from '../db/schema';
-import { enrichTrace, countSteps } from '../trace-format';
+import { enrichTrace, countSteps, truncateTrace } from '../trace-format';
 import type { Trace } from '../trace';
 
 export interface ExecutionSummary {
@@ -29,6 +29,7 @@ export interface ExecutionRecord extends ExecutionSummary {
 export class ExecutionStore {
   async save(trace: Trace): Promise<number> {
     const enriched = enrichTrace(trace);
+    const stored = truncateTrace(enriched); // bound row size; folds already done
     const [row] = await db
       .insert(executions)
       .values({
@@ -38,7 +39,7 @@ export class ExecutionStore {
         finishedAt: new Date(enriched.finishedAt),
         durationMs: enriched.finishedAt - enriched.startedAt,
         stepCount: countSteps(enriched),
-        trace: enriched,
+        trace: stored,
       })
       .returning({ id: executions.id });
     return row.id;

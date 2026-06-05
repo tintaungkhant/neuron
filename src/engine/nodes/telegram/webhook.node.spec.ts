@@ -55,7 +55,7 @@ describe('TelegramWebhookNode', () => {
     expect(out.attachment).toMatchObject({ kind: 'photo', fileId: 'big' });
   });
 
-  it('throws when the update carries no message', () => {
-    expect(() => node.execute({ update_id: 1 })).toThrow(/no message/);
+  it('returns null for a non-message update instead of throwing', async () => {
+    await expect(node.execute({ update_id: 1 })).resolves.toBeNull();
   });
 });

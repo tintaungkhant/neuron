@@ -57,23 +57,27 @@ it fixes the memory race, curbs double-orders, and tames albums at once.
 
 ## LOW / observability
 
-### 6. Failed tools vanish from the trace — OPEN
+### 6. Failed tools vanish from the trace — FIXED (2026-06-05)
+> Resolved: the agent wraps a propagated tool failure as `tool "<name>" failed after N attempt(s): <reason>`, so the trace's errored agent step names the failing tool and attempt count. (A fully structured failed `toolStep` would need the node not to throw — error message is the pragmatic surface.)
 - **Where:** `src/engine/nodes/ai/agent.node.ts` retry loop.
 - **Problem:** On retry-exhaustion the tool throws before its `toolStep` is pushed, so `executions` shows the agent node errored but not which tool or how many attempts.
 - **Fix direction:** record a failed `toolStep` (status `error`, attempts) before propagating.
 
-### 7. Retry count uncapped, no overall turn timeout — OPEN
+### 7. Retry count uncapped, no overall turn timeout — FIXED (2026-06-05)
+> Resolved: tool retry count is hard-capped at 5 (`MAX_TOOL_RETRIES`); the agent has a wall-clock turn budget (`maxTurnMs`, default 120s) checked between steps, throwing `turn exceeded …` past the deadline.
 - **Where:** `src/engine/nodes/ai/agent.node.ts` (`tool.retry.count`), per-call timeouts only.
 - **Problem:** A tool with `retry.count: 1000, delayMs: 1000` stalls ~17 min; per-call timeouts don't bound the whole turn.
 - **Fix direction:** cap retry count, and/or add a per-turn time budget.
 
-### 8. Trace bloat & duplication — OPEN
+### 8. Trace bloat & duplication — FIXED (2026-06-05, retention still open)
+> Resolved: `enrichTrace` strips the duplicated `toolSteps` from a node's output after folding into `children`; `truncateTrace` caps long strings (system prompts, big outputs) at 4000 chars before persist. **Still open:** a retention/prune job for old `executions` rows (ops task, no scheduler yet).
 - **Where:** `src/engine/trace-format.ts` (`enrichTrace`), `src/engine/executions/execution-store.ts`.
 - **Problem:** `enrichTrace` leaves `output.toolSteps` *and* adds `children` (same data twice); the full `systemPrompt` is stored in every row; no retention on `executions`.
 - **Impact:** Storage grows fast.
 - **Fix direction:** strip `output.toolSteps` after folding into `children`; consider truncating large fields; add a retention/prune job.
 
-### 9. Non-message updates throw noise — OPEN
+### 9. Non-message updates throw noise — FIXED (2026-06-05)
+> Resolved: `TelegramWebhookNode` returns `null` for updates with no `message` (edits, reactions, callbacks); the workflow early-returns on `null` — no error, no failed-run noise.
 - **Where:** `src/engine/nodes/telegram/webhook.node.ts` (throws on no `message`); parse runs outside the workflow try.
 - **Problem:** Edited messages, reactions, callback queries throw → logged as errors with no apology (no chat context).
 - **Fix direction:** ignore non-message updates gracefully (return early, no error).

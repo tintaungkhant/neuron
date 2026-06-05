@@ -5,6 +5,9 @@ import type { ChatMemory } from '../../ai/memory';
 import type { AgentTool, ToolSpec } from '../../ai/tool';
 import { sleep } from '../../sleep';
 
+const MAX_TOOL_RETRIES = 5; // hard cap so a tool's retry policy can't stall a turn
+const DEFAULT_MAX_TURN_MS = 120_000; // wall-clock budget for the whole turn
+
 export interface AiAgentInput {
   input: string;
   systemPrompt?: string;
@@ -12,6 +15,7 @@ export interface AiAgentInput {
   memory?: ChatMemory;
   tools?: AgentTool[];
   maxSteps?: number; // default 6 — loop guard against runaway tool calls
+  maxTurnMs?: number; // default 120s — wall-clock backstop for the whole turn
 }
 
 export interface AgentToolStep {
@@ -35,6 +39,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
   async execute(input: AiAgentInput): Promise<AiAgentOutput> {
     const { systemPrompt, chatModel, memory, tools } = input;
     const maxSteps = input.maxSteps ?? 6;
+    const deadline = Date.now() + (input.maxTurnMs ?? DEFAULT_MAX_TURN_MS);
 
     const history = memory ? await memory.load() : [];
     const userMsg: ChatMessage = { role: 'user', content: input.input };
@@ -57,6 +62,11 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
     const toolSteps: AgentToolStep[] = [];
 
     for (let step = 0; step < maxSteps; step++) {
+      if (Date.now() > deadline) {
+        throw new Error(
+          `AiAgentNode: turn exceeded ${input.maxTurnMs ?? DEFAULT_MAX_TURN_MS}ms`,
+        );
+      }
       const res = await chatModel.complete({ messages, tools: toolSpecs });
       const assistantMsg = res.message;
       messages.push(assistantMsg);
@@ -75,7 +85,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
         // exhausted the error propagates: the turn fails and the workflow-level
         // catch-all sends the user a canned apology (no technical detail leaks
         // into the reply). Deterministic failure handling, one place.
-        const maxRetries = tool.retry?.count ?? 0;
+        const maxRetries = Math.min(tool.retry?.count ?? 0, MAX_TOOL_RETRIES);
         const retryDelayMs = tool.retry?.delayMs ?? 0;
         const startedAt = Date.now();
         let attempts = 0;
@@ -86,7 +96,15 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
             result = await tool.execute(call.arguments);
             break;
           } catch (e) {
-            if (attempts > maxRetries) throw e;
+            if (attempts > maxRetries) {
+              // Name the failing tool + attempts in the propagated error so the
+              // trace step records which tool broke (the failed run carries no
+              // tool output otherwise).
+              const reason = e instanceof Error ? e.message : String(e);
+              throw new Error(
+                `tool "${call.name}" failed after ${attempts} attempt(s): ${reason}`,
+              );
+            }
             if (retryDelayMs > 0) await sleep(retryDelayMs);
           }
         }

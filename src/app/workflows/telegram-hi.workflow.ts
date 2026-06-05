@@ -96,6 +96,7 @@ const SORRY_MESSAGE =
 export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
   async function telegramWorkflow(payload, wf) {
     const parsed = await wf.run(TelegramWebhookNode, payload);
+    if (!parsed) return; // non-message update — nothing to do
 
     try {
       // Upsert the chat without a pre-select — a unique ext_id + onConflictDoNothing

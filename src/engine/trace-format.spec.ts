@@ -1,4 +1,9 @@
-import { formatTrace, enrichTrace, countSteps } from './trace-format';
+import {
+  formatTrace,
+  enrichTrace,
+  countSteps,
+  truncateTrace,
+} from './trace-format';
 import type { Trace } from './trace';
 
 function agentStep(
@@ -58,6 +63,8 @@ describe('enrichTrace', () => {
         status: 'ok',
       },
     ]);
+    // toolSteps stripped from the node output (now lives in children)
+    expect(step.output).toEqual({ output: 'hi', messages: [] });
   });
 
   it('recurses into sub-workflows', () => {
@@ -108,6 +115,39 @@ describe('enrichTrace', () => {
     const inner = sub.trace.steps[0];
     if (inner.kind !== 'node') throw new Error('expected node');
     expect(inner.children).toHaveLength(1);
+  });
+});
+
+describe('truncateTrace', () => {
+  it('truncates long strings in step input/output, leaves short ones', () => {
+    const big = 'x'.repeat(50);
+    const trace: Trace = {
+      workflowName: 'wf',
+      startedAt: 0,
+      finishedAt: 10,
+      status: 'ok',
+      input: {},
+      steps: [
+        {
+          kind: 'node',
+          name: 'N',
+          input: { prompt: big, keep: 'short' },
+          output: { text: big },
+          startedAt: 0,
+          finishedAt: 10,
+          status: 'ok',
+        },
+      ],
+    };
+
+    const out = truncateTrace(trace, 10);
+    const step = out.steps[0];
+    if (step.kind !== 'node') throw new Error('expected node');
+    expect(step.input).toEqual({
+      prompt: 'xxxxxxxxxx…[+40 chars]',
+      keep: 'short',
+    });
+    expect(step.output).toEqual({ text: 'xxxxxxxxxx…[+40 chars]' });
   });
 });
 

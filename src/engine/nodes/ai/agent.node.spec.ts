@@ -178,7 +178,52 @@ describe('AiAgentNode — tools', () => {
         chatModel: model,
         tools: [boom],
       }),
-    ).rejects.toThrow(/db down/);
+    ).rejects.toThrow(/tool "boom" failed after 1 attempt\(s\): db down/);
+  });
+
+  it('caps a tool retry policy at the hard maximum', async () => {
+    let n = 0;
+    const spinner: AgentTool = {
+      name: 'spinner',
+      description: 'always fails, asks for many retries',
+      parameters: { type: 'object', properties: {} },
+      retry: { count: 1000, delayMs: 0 },
+      execute: () => {
+        n++;
+        return Promise.reject(new Error('x'));
+      },
+    };
+    const model = new FakeChatModel([
+      toolCall({ id: 'c', name: 'spinner', arguments: {} }),
+    ]);
+
+    await expect(
+      new AiAgentNode().execute({
+        input: 'go',
+        chatModel: model,
+        tools: [spinner],
+      }),
+    ).rejects.toThrow();
+    expect(n).toBe(6); // capped: 1 initial + 5 retries, not 1001
+  });
+
+  it('aborts a turn that exceeds the time budget', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValueOnce(1000) // deadline = 1000 + budget
+      .mockReturnValue(10_000_000); // every later check is past the deadline
+    const model = new FakeChatModel([assistant('hi')]);
+
+    await expect(
+      new AiAgentNode().execute({
+        input: 'x',
+        chatModel: model,
+        maxTurnMs: 5000,
+      }),
+    ).rejects.toThrow(/turn exceeded 5000ms/);
+    expect(model.calls).toHaveLength(0); // bailed before calling the model
+
+    nowSpy.mockRestore();
   });
 
   it('retries a failing tool per its retry policy, then succeeds', async () => {

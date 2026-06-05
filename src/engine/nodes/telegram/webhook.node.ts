@@ -243,12 +243,17 @@ function normalizeAttachment(
 @Injectable()
 export class TelegramWebhookNode extends Node<
   TelegramWebhookPayload,
-  TelegramWebhookOutput
+  TelegramWebhookOutput | null
 > {
-  execute(input: TelegramWebhookPayload): Promise<TelegramWebhookOutput> {
+  execute(
+    input: TelegramWebhookPayload,
+  ): Promise<TelegramWebhookOutput | null> {
     const msg = input.message;
     if (!msg) {
-      throw new Error('Unsupported Telegram update: no message');
+      // Non-message updates (edited messages, reactions, callback queries, …)
+      // are not errors — just nothing for this bot to act on. Return null so the
+      // workflow can quietly skip them instead of logging a failed run.
+      return Promise.resolve(null);
     }
 
     const out: TelegramWebhookOutput = {
