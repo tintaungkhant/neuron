@@ -3,6 +3,7 @@ import { Node } from '../../node';
 import type { ChatMessage, ChatModel } from '../../ai/chat-model';
 import type { ChatMemory } from '../../ai/memory';
 import type { AgentTool, ToolSpec } from '../../ai/tool';
+import { sleep } from '../../sleep';
 
 export interface AiAgentInput {
   input: string;
@@ -20,6 +21,7 @@ export interface AgentToolStep {
   startedAt: number;
   finishedAt: number;
   status: 'ok' | 'error';
+  attempts: number; // total tries (1 + retries that fired)
 }
 
 export interface AiAgentOutput {
@@ -69,11 +71,25 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
         if (!tool) {
           throw new Error(`AiAgentNode: unknown tool "${call.name}"`);
         }
-        // A tool error propagates: the turn fails and the workflow-level
+        // Run the tool, honouring its opt-in retry policy. After retries are
+        // exhausted the error propagates: the turn fails and the workflow-level
         // catch-all sends the user a canned apology (no technical detail leaks
-        // into the reply). This keeps failure handling in one deterministic place.
+        // into the reply). Deterministic failure handling, one place.
+        const maxRetries = tool.retry?.count ?? 0;
+        const retryDelayMs = tool.retry?.delayMs ?? 0;
         const startedAt = Date.now();
-        const result = await tool.execute(call.arguments);
+        let attempts = 0;
+        let result: unknown;
+        for (;;) {
+          attempts++;
+          try {
+            result = await tool.execute(call.arguments);
+            break;
+          } catch (e) {
+            if (attempts > maxRetries) throw e;
+            if (retryDelayMs > 0) await sleep(retryDelayMs);
+          }
+        }
         toolSteps.push({
           name: call.name,
           input: call.arguments,
@@ -81,6 +97,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
           startedAt,
           finishedAt: Date.now(),
           status: 'ok',
+          attempts,
         });
         messages.push({
           role: 'tool',

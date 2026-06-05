@@ -9,6 +9,4 @@ export async function geminiError(
   throw new Error(`${context}: ${res.status} ${body}`);
 }
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+export { sleep } from '../../sleep';

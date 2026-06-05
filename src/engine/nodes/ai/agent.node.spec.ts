@@ -149,6 +149,7 @@ describe('AiAgentNode — tools', () => {
       input: { city: 'Yangon' },
       output: { tempC: 21 },
       status: 'ok',
+      attempts: 1,
     });
     expect(model.calls[0].tools).toEqual([
       {
@@ -182,6 +183,66 @@ describe('AiAgentNode — tools', () => {
         tools: [boom],
       }),
     ).rejects.toThrow(/db down/);
+  });
+
+  it('retries a failing tool per its retry policy, then succeeds', async () => {
+    let n = 0;
+    const flaky: AgentTool = {
+      name: 'flaky',
+      description: 'fails twice then works',
+      parameters: { type: 'object', properties: {} },
+      retry: { count: 2, delayMs: 0 },
+      execute: () => {
+        n++;
+        return n < 3
+          ? Promise.reject(new Error('blip'))
+          : Promise.resolve({ ok: true });
+      },
+    };
+    const model = new FakeChatModel([
+      toolCall({ id: 'c', name: 'flaky', arguments: {} }),
+      assistant('done'),
+    ]);
+
+    const out = await new AiAgentNode().execute({
+      input: 'go',
+      chatModel: model,
+      tools: [flaky],
+    });
+
+    expect(out.output).toBe('done');
+    expect(n).toBe(3); // 1 initial + 2 retries
+    expect(out.toolSteps[0]).toMatchObject({
+      name: 'flaky',
+      status: 'ok',
+      attempts: 3,
+    });
+  });
+
+  it('propagates after exhausting a tool retry policy', async () => {
+    let n = 0;
+    const always: AgentTool = {
+      name: 'always',
+      description: 'never works',
+      parameters: { type: 'object', properties: {} },
+      retry: { count: 1, delayMs: 0 },
+      execute: () => {
+        n++;
+        return Promise.reject(new Error('nope'));
+      },
+    };
+    const model = new FakeChatModel([
+      toolCall({ id: 'c', name: 'always', arguments: {} }),
+    ]);
+
+    await expect(
+      new AiAgentNode().execute({
+        input: 'go',
+        chatModel: model,
+        tools: [always],
+      }),
+    ).rejects.toThrow(/nope/);
+    expect(n).toBe(2); // 1 initial + 1 retry, then give up
   });
 
   it('throws when the model keeps calling tools past maxSteps', async () => {
