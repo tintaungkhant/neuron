@@ -72,6 +72,7 @@ describe('AiAgentNode — core', () => {
 
     expect(out.output).toBe('hello there');
     expect(model.calls).toHaveLength(1);
+    expect(out.toolCalls).toEqual([]);
   });
 
   it('sends the system prompt then the user message', async () => {
@@ -142,6 +143,7 @@ describe('AiAgentNode — tools', () => {
 
     expect(weather.calls).toEqual([{ city: 'Yangon' }]);
     expect(out.output).toBe('It is 21C in Yangon.');
+    expect(out.toolCalls).toEqual(['get_weather']);
     expect(model.calls[0].tools).toEqual([
       {
         name: 'get_weather',

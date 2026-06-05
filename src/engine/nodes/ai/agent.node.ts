@@ -16,6 +16,7 @@ export interface AiAgentInput {
 export interface AiAgentOutput {
   output: string; // final assistant text
   messages: ChatMessage[]; // this turn's messages: user msg + every assistant/tool msg
+  toolCalls: string[]; // names of tools invoked this run, in call order (for tracing)
 }
 
 @Injectable()
@@ -42,6 +43,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
     }));
 
     let finalAssistant: ChatMessage | undefined;
+    const executedTools: string[] = [];
 
     for (let step = 0; step < maxSteps; step++) {
       const res = await chatModel.complete({ messages, tools: toolSpecs });
@@ -58,6 +60,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
         if (!tool) {
           throw new Error(`AiAgentNode: unknown tool "${call.name}"`);
         }
+        executedTools.push(call.name);
         const result = await tool.execute(call.arguments);
         messages.push({
           role: 'tool',
@@ -83,6 +86,10 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
       await memory.append(turn);
     }
 
-    return { output: finalAssistant.content, messages: turn };
+    return {
+      output: finalAssistant.content,
+      messages: turn,
+      toolCalls: executedTools,
+    };
   }
 }

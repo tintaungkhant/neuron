@@ -10,7 +10,17 @@ describe('DemoTelegramController', () => {
   let runMock: jest.Mock;
 
   beforeEach(async () => {
-    runMock = jest.fn().mockResolvedValue({ result: undefined, trace: {} });
+    runMock = jest.fn().mockResolvedValue({
+      result: undefined,
+      trace: {
+        workflowName: 'demoTelegramHiWorkflow',
+        startedAt: 0,
+        finishedAt: 0,
+        status: 'ok',
+        input: {},
+        steps: [],
+      },
+    });
     const mod: TestingModule = await Test.createTestingModule({
       controllers: [DemoTelegramController],
       providers: [{ provide: WorkflowEngine, useValue: { run: runMock } }],
