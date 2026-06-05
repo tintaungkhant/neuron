@@ -10,6 +10,17 @@ export type TraceStep =
       finishedAt: number;
       status: 'ok' | 'error';
       error?: SerializedError;
+      children?: TraceStep[]; // nested steps run inside this node (e.g. agent tool calls)
+    }
+  | {
+      kind: 'tool';
+      name: string;
+      input: unknown;
+      output?: unknown;
+      startedAt: number;
+      finishedAt: number;
+      status: 'ok' | 'error';
+      error?: SerializedError;
     }
   | {
       kind: 'subworkflow';

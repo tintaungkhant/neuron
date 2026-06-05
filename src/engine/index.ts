@@ -2,7 +2,12 @@ export { Node } from './node';
 export { WorkflowEngine } from './engine';
 export { EngineModule } from './engine.module';
 export { WorkflowError } from './errors';
-export { formatTrace } from './trace-format';
+export { formatTrace, enrichTrace, countSteps } from './trace-format';
+export { ExecutionStore } from './executions/execution-store';
+export type {
+  ExecutionSummary,
+  ExecutionRecord,
+} from './executions/execution-store';
 export type { WorkflowFn } from './workflow';
 export type { Context } from './context';
 export type { Trace, TraceStep, SerializedError } from './trace';

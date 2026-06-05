@@ -13,10 +13,19 @@ export interface AiAgentInput {
   maxSteps?: number; // default 6 — loop guard against runaway tool calls
 }
 
+export interface AgentToolStep {
+  name: string;
+  input: Record<string, unknown>; // arguments the model passed
+  output: unknown; // value the tool returned
+  startedAt: number;
+  finishedAt: number;
+  status: 'ok' | 'error';
+}
+
 export interface AiAgentOutput {
   output: string; // final assistant text
   messages: ChatMessage[]; // this turn's messages: user msg + every assistant/tool msg
-  toolCalls: string[]; // names of tools invoked this run, in call order (for tracing)
+  toolSteps: AgentToolStep[]; // tools invoked this run, in call order, with in/out (for tracing)
 }
 
 @Injectable()
@@ -43,7 +52,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
     }));
 
     let finalAssistant: ChatMessage | undefined;
-    const executedTools: string[] = [];
+    const toolSteps: AgentToolStep[] = [];
 
     for (let step = 0; step < maxSteps; step++) {
       const res = await chatModel.complete({ messages, tools: toolSpecs });
@@ -60,8 +69,16 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
         if (!tool) {
           throw new Error(`AiAgentNode: unknown tool "${call.name}"`);
         }
-        executedTools.push(call.name);
+        const startedAt = Date.now();
         const result = await tool.execute(call.arguments);
+        toolSteps.push({
+          name: call.name,
+          input: call.arguments,
+          output: result,
+          startedAt,
+          finishedAt: Date.now(),
+          status: 'ok',
+        });
         messages.push({
           role: 'tool',
           toolCallId: call.id,
@@ -89,7 +106,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
     return {
       output: finalAssistant.content,
       messages: turn,
-      toolCalls: executedTools,
+      toolSteps,
     };
   }
 }

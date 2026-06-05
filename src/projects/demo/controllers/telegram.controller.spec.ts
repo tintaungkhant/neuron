@@ -1,13 +1,14 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { WorkflowEngine } from '../../../engine';
+import { ExecutionStore, WorkflowEngine } from '../../../engine';
 import { demoTelegramHiWorkflow } from '../workflows/telegram-hi.workflow';
 import { DemoTelegramController } from './telegram.controller';
 
 describe('DemoTelegramController', () => {
   let app: INestApplication;
   let runMock: jest.Mock;
+  let saveMock: jest.Mock;
 
   beforeEach(async () => {
     runMock = jest.fn().mockResolvedValue({
@@ -21,9 +22,13 @@ describe('DemoTelegramController', () => {
         steps: [],
       },
     });
+    saveMock = jest.fn().mockResolvedValue(1);
     const mod: TestingModule = await Test.createTestingModule({
       controllers: [DemoTelegramController],
-      providers: [{ provide: WorkflowEngine, useValue: { run: runMock } }],
+      providers: [
+        { provide: WorkflowEngine, useValue: { run: runMock } },
+        { provide: ExecutionStore, useValue: { save: saveMock } },
+      ],
     }).compile();
     app = mod.createNestApplication();
     await app.init();
@@ -55,6 +60,7 @@ describe('DemoTelegramController', () => {
     const [wf, input] = runMock.mock.calls[0] as [unknown, unknown];
     expect(wf).toBe(demoTelegramHiWorkflow);
     expect(input).toEqual(update);
+    expect(saveMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns 200 even when the workflow throws', async () => {

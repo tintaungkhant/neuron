@@ -1,8 +1,8 @@
-import type { Trace } from './trace';
+import type { Trace, TraceStep } from './trace';
 
 interface FlowToken {
   label: string;
-  ms: number | null; // null for surfaced tool calls (not timed as steps)
+  ms: number;
   status: 'ok' | 'error';
 }
 
@@ -17,10 +17,62 @@ function humanize(name: string): string {
   return s.toLowerCase().trim();
 }
 
-function hasToolCalls(o: unknown): o is { toolCalls: string[] } {
-  if (typeof o !== 'object' || o === null) return false;
-  const tc = (o as { toolCalls?: unknown }).toolCalls;
-  return Array.isArray(tc) && tc.every((x) => typeof x === 'string');
+interface RawToolStep {
+  name: string;
+  input: unknown;
+  output: unknown;
+  startedAt: number;
+  finishedAt: number;
+  status: 'ok' | 'error';
+}
+
+function extractToolSteps(output: unknown): RawToolStep[] | undefined {
+  if (typeof output !== 'object' || output === null) return undefined;
+  const ts = (output as { toolSteps?: unknown }).toolSteps;
+  if (!Array.isArray(ts)) return undefined;
+  return ts as RawToolStep[];
+}
+
+/**
+ * Fold node-internal tool steps (exposed on a node's output as `toolSteps`)
+ * into that step's `children`, recursing into sub-workflows. Produces the
+ * canonical, persistable trace where tools are first-class nested steps.
+ */
+export function enrichTrace(trace: Trace): Trace {
+  return { ...trace, steps: trace.steps.map(enrichStep) };
+}
+
+function enrichStep(step: TraceStep): TraceStep {
+  if (step.kind === 'subworkflow') {
+    return { ...step, trace: enrichTrace(step.trace) };
+  }
+  if (step.kind === 'tool') return step;
+  const tools = extractToolSteps(step.output);
+  if (!tools) return step;
+  const children: TraceStep[] = tools.map((t) => ({
+    kind: 'tool',
+    name: t.name,
+    input: t.input,
+    output: t.output,
+    startedAt: t.startedAt,
+    finishedAt: t.finishedAt,
+    status: t.status,
+  }));
+  return { ...step, children };
+}
+
+/** Total executed steps, recursive: nodes + their tool children + every sub-workflow step. */
+export function countSteps(trace: Trace): number {
+  let n = 0;
+  for (const step of trace.steps) {
+    n += 1;
+    if (step.kind === 'subworkflow') {
+      n += countSteps(step.trace);
+    } else if (step.kind === 'node' && step.children) {
+      n += step.children.length;
+    }
+  }
+  return n;
 }
 
 function collect(trace: Trace): FlowToken[] {
@@ -35,9 +87,13 @@ function collect(trace: Trace): FlowToken[] {
       ms: step.finishedAt - step.startedAt,
       status: step.status,
     });
-    if (hasToolCalls(step.output)) {
-      for (const name of step.output.toolCalls) {
-        tokens.push({ label: humanize(name), ms: null, status: 'ok' });
+    if (step.kind === 'node' && step.children) {
+      for (const child of step.children) {
+        tokens.push({
+          label: humanize(child.name),
+          ms: child.finishedAt - child.startedAt,
+          status: child.status,
+        });
       }
     }
   }
@@ -45,9 +101,10 @@ function collect(trace: Trace): FlowToken[] {
 }
 
 /**
- * Render a Trace as a one-glance n8n-style flow line:
+ * Render a Trace as a one-glance n8n-style flow line. Walks `children`
+ * (tool steps), so enrich the trace first to see tools:
  *   demoTelegramHiWorkflow ✓ 1200ms
- *     telegram webhook (2ms) → ai agent (1098ms) → get services → telegram send message (100ms)
+ *     telegram webhook (2ms) → ai agent (1098ms) → get services (40ms) → telegram send message (100ms)
  * The trace only holds steps that ran, so a mid-flow failure shows the partial
  * path up to (and marking) the step that broke, with the reason appended.
  */
@@ -55,8 +112,7 @@ export function formatTrace(trace: Trace): string {
   const flow = collect(trace)
     .map((t) => {
       const mark = t.status === 'error' ? ' ✗' : '';
-      const ms = t.ms != null ? ` (${t.ms}ms)` : '';
-      return `${t.label}${mark}${ms}`;
+      return `${t.label}${mark} (${t.ms}ms)`;
     })
     .join(' → ');
 
