@@ -478,6 +478,34 @@ describe('telegramWorkflow', () => {
     );
   });
 
+  it('sends a canned apology and rethrows when the turn fails', async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = urlOf(input);
+      if (url.startsWith('https://openrouter.ai/')) {
+        return Promise.resolve(new Response('boom', { status: 500 }));
+      }
+      return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
+    });
+
+    const payload: TelegramWebhookPayload = {
+      update_id: 99,
+      message: {
+        message_id: 1,
+        chat: { id: 99, type: 'private' },
+        date: 1700000000,
+        text: 'hi',
+      },
+    };
+
+    await expect(engine.run(telegramWorkflow, payload)).rejects.toThrow();
+
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
+    const tgCall = calls.find(([u]) => urlOf(u).includes('api.telegram.org'));
+    expect(tgCall).toBeDefined();
+    const body = JSON.parse(tgCall![1].body as string) as { text: string };
+    expect(body.text).toContain('တောင်းပန်'); // the canned apology, not a tech error
+  });
+
   it('skips chat insert when the chat already exists in the db', async () => {
     chatLookupLimit.mockResolvedValueOnce([{ id: 123 }]);
 

@@ -89,76 +89,98 @@ const IMAGE_PROMPT = `Describe this image for a sales assistant. If it is a paym
 // Telegram delivers photos as JPEG; PhotoSize carries no mime type.
 const PHOTO_MIME = 'image/jpeg';
 
+// Shown to the customer on ANY failure — a fixed, non-technical apology so no
+// error detail (DB, API, timeout, …) ever leaks into the chat.
+const SORRY_MESSAGE =
+  'တောင်းပန်ပါတယ်ရှင် 🙏 စက်မှာ အနည်းငယ် ပြဿနာလေး ဖြစ်နေလို့ပါ။ ခဏနေ ပြန်ပို့ပေးပါနော်။';
+
 export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
   async function telegramWorkflow(payload, wf) {
     const parsed = await wf.run(TelegramWebhookNode, payload);
 
-    const existing = await appDb
-      .select({ id: chats.id })
-      .from(chats)
-      .where(eq(chats.extId, parsed.chat.id))
-      .limit(1);
-    if (existing.length === 0) {
-      await appDb.insert(chats).values({
-        extId: parsed.chat.id,
-        name: parsed.from?.username ?? parsed.from?.firstName ?? null,
-      });
-    }
-
-    let agentInput: string;
-    const attachment = parsed.attachment;
-    if (attachment?.kind === 'photo') {
-      const file = await wf.run(TelegramGetFileNode, {
-        botToken: appConfig.telegramBotToken,
-        fileId: attachment.fileId,
-      });
-      const fileSize = file.fileSize ?? attachment.fileSize;
-      if (fileSize == null) {
-        throw new Error('cannot determine image file size');
+    try {
+      const existing = await appDb
+        .select({ id: chats.id })
+        .from(chats)
+        .where(eq(chats.extId, parsed.chat.id))
+        .limit(1);
+      if (existing.length === 0) {
+        await appDb.insert(chats).values({
+          extId: parsed.chat.id,
+          name: parsed.from?.username ?? parsed.from?.firstName ?? null,
+        });
       }
-      const uploaded = await wf.run(GeminiUploadFileNode, {
-        apiKey: appConfig.geminiApiKey,
-        url: file.url,
-        mimeType: PHOTO_MIME,
-        fileSize,
+
+      let agentInput: string;
+      const attachment = parsed.attachment;
+      if (attachment?.kind === 'photo') {
+        const file = await wf.run(TelegramGetFileNode, {
+          botToken: appConfig.telegramBotToken,
+          fileId: attachment.fileId,
+        });
+        const fileSize = file.fileSize ?? attachment.fileSize;
+        if (fileSize == null) {
+          throw new Error('cannot determine image file size');
+        }
+        const uploaded = await wf.run(GeminiUploadFileNode, {
+          apiKey: appConfig.geminiApiKey,
+          url: file.url,
+          mimeType: PHOTO_MIME,
+          fileSize,
+        });
+        const read = await wf.run(GeminiReadImageNode, {
+          apiKey: appConfig.geminiApiKey,
+          model: appConfig.geminiModel,
+          fileUri: uploaded.fileUri,
+          mimeType: PHOTO_MIME,
+          prompt: IMAGE_PROMPT,
+        });
+        const caption = parsed.text;
+        agentInput =
+          `[User sent an image. Contents: ${read.text}]` +
+          (caption ? `\n${caption}` : '');
+      } else {
+        if (!parsed.text) return;
+        agentInput = parsed.text;
+      }
+
+      const agent = await wf.run(AiAgentNode, {
+        input: agentInput,
+        systemPrompt: SYSTEM_PROMPT,
+        chatModel: new OpenRouterChatModel({
+          apiKey: appConfig.openRouterApiKey,
+          model: appConfig.openRouterModel,
+        }),
+        memory: new PgChatMemory({
+          sessionId: `${appConfig.id}:${parsed.chat.id}`,
+        }),
+        tools: [
+          new GetServicesTool(),
+          new GetPaymentMethodsTool(),
+          new GetFaqsTool(),
+          new CreateOrderTool({ chatExtId: parsed.chat.id }),
+        ],
       });
-      const read = await wf.run(GeminiReadImageNode, {
-        apiKey: appConfig.geminiApiKey,
-        model: appConfig.geminiModel,
-        fileUri: uploaded.fileUri,
-        mimeType: PHOTO_MIME,
-        prompt: IMAGE_PROMPT,
+
+      await wf.run(TelegramSendMessageNode, {
+        botToken: appConfig.telegramBotToken,
+        chatId: parsed.chat.id,
+        text: agent.output,
       });
-      const caption = parsed.text;
-      agentInput =
-        `[User sent an image. Contents: ${read.text}]` +
-        (caption ? `\n${caption}` : '');
-    } else {
-      if (!parsed.text) return;
-      agentInput = parsed.text;
+    } catch (err) {
+      // Catch-all: apologize to the customer, then rethrow so the failure is
+      // still recorded in the trace / executions. The apology send gets its own
+      // guard — if Telegram itself is down we can't do anything but surface the
+      // original error.
+      try {
+        await wf.run(TelegramSendMessageNode, {
+          botToken: appConfig.telegramBotToken,
+          chatId: parsed.chat.id,
+          text: SORRY_MESSAGE,
+        });
+      } catch {
+        // ignore — nothing more we can do for the user
+      }
+      throw err;
     }
-
-    const agent = await wf.run(AiAgentNode, {
-      input: agentInput,
-      systemPrompt: SYSTEM_PROMPT,
-      chatModel: new OpenRouterChatModel({
-        apiKey: appConfig.openRouterApiKey,
-        model: appConfig.openRouterModel,
-      }),
-      memory: new PgChatMemory({
-        sessionId: `${appConfig.id}:${parsed.chat.id}`,
-      }),
-      tools: [
-        new GetServicesTool(),
-        new GetPaymentMethodsTool(),
-        new GetFaqsTool(),
-        new CreateOrderTool({ chatExtId: parsed.chat.id }),
-      ],
-    });
-
-    await wf.run(TelegramSendMessageNode, {
-      botToken: appConfig.telegramBotToken,
-      chatId: parsed.chat.id,
-      text: agent.output,
-    });
   };

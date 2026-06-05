@@ -69,24 +69,18 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
         if (!tool) {
           throw new Error(`AiAgentNode: unknown tool "${call.name}"`);
         }
+        // A tool error propagates: the turn fails and the workflow-level
+        // catch-all sends the user a canned apology (no technical detail leaks
+        // into the reply). This keeps failure handling in one deterministic place.
         const startedAt = Date.now();
-        let result: unknown;
-        let status: 'ok' | 'error' = 'ok';
-        try {
-          result = await tool.execute(call.arguments);
-        } catch (e) {
-          // A tool failure must not kill the turn — hand the error back to the
-          // model so it can recover or apologize, and record it in the trace.
-          status = 'error';
-          result = { error: e instanceof Error ? e.message : String(e) };
-        }
+        const result = await tool.execute(call.arguments);
         toolSteps.push({
           name: call.name,
           input: call.arguments,
           output: result,
           startedAt,
           finishedAt: Date.now(),
-          status,
+          status: 'ok',
         });
         messages.push({
           role: 'tool',
