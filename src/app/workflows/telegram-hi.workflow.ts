@@ -13,6 +13,7 @@ import {
 } from '../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../engine/nodes/telegram/send-message.node';
 import { appConfig } from '../config';
+import { stripMarkdown } from '../strip-markdown';
 import { appDb } from '../db/client';
 import { chats } from '../db/schema';
 import { CreateOrderTool } from '../tools/create-order.tool';
@@ -166,7 +167,7 @@ export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
       await wf.run(TelegramSendMessageNode, {
         botToken: appConfig.telegramBotToken,
         chatId: parsed.chat.id,
-        text: agent.output,
+        text: stripMarkdown(agent.output), // enforce plain text — model still leaks markdown
       });
 
       // Commit the turn to memory ONLY after the reply was delivered, so a
