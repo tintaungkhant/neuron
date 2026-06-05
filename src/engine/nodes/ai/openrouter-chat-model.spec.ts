@@ -121,6 +121,36 @@ describe('OpenRouterChatModel', () => {
     );
   });
 
+  it('throws a clear error when the response has no choices', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ choices: [] }), { status: 200 }),
+    );
+
+    await expect(model().complete({ messages: [] })).rejects.toThrow(
+      /OpenRouter: no message in response/,
+    );
+  });
+
+  it('throws a clear error when tool-call arguments are not valid JSON', async () => {
+    fetchSpy.mockResolvedValue(
+      okResponse({
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'broken', arguments: 'not json{' },
+          },
+        ],
+      }),
+    );
+
+    await expect(model().complete({ messages: [] })).rejects.toThrow(
+      /invalid JSON arguments for tool "broken"/,
+    );
+  });
+
   it('uses the apiKey and model passed to the constructor', async () => {
     fetchSpy.mockResolvedValue(okResponse({ role: 'assistant', content: 'x' }));
 

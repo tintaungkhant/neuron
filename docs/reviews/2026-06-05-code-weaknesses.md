@@ -28,7 +28,8 @@ it fixes the memory race, curbs double-orders, and tames albums at once.
 - **Impact:** Duplicate / double-charged orders.
 - **Fix direction:** idempotency — e.g. one open order per chat, or dedupe on (chatId, summary) within a time window, or a client-supplied idempotency key.
 
-### 3. `chats.ext_id` has no unique constraint — OPEN
+### 3. `chats.ext_id` has no unique constraint — FIXED (2026-06-05)
+> Resolved: `ext_id` is now `notNull().unique()` and the workflow upserts with `onConflictDoNothing` (no pre-select). Migration `drizzle-app/0003_*`. Note: existing duplicate/null `ext_id` rows must be cleaned before applying.
 - **Where:** `src/app/db/schema.ts` (`chats`), `src/app/workflows/telegram-hi.workflow.ts` (select-then-insert).
 - **Problem:** No unique index on `ext_id`; the workflow does select-then-insert. Concurrent first messages both see "not found" and both insert.
 - **Impact:** Duplicate chat rows.
@@ -38,13 +39,15 @@ it fixes the memory race, curbs double-orders, and tames albums at once.
 
 ## MEDIUM
 
-### 4. Memory recorded before the reply is sent — OPEN
+### 4. Memory recorded before the reply is sent — FIXED (2026-06-05)
+> Resolved: `AiAgentNode` no longer persists; the workflow calls `memory.append(agent.messages)` only after a successful send.
 - **Where:** `src/engine/nodes/ai/agent.node.ts` (appends turn to memory), then `src/app/workflows/telegram-hi.workflow.ts` sends.
 - **Problem:** The agent appends the user+assistant turn to memory *before* the workflow sends the reply. If the send fails → apology goes out, but memory already stored an assistant reply the user never saw.
 - **Impact:** Memory/reality mismatch — next turn the model believes it said something it didn't (mild poisoning).
 - **Fix direction:** commit to memory only after a successful send (move persistence out of the agent into the workflow, or send-then-commit).
 
-### 5. Fragile upstream parsing — OPEN
+### 5. Fragile upstream parsing — FIXED (2026-06-05)
+> Resolved: `complete()` guards `choices?.[0]?.message` (throws "no message in response"); tool-call arguments parse via a wrapped helper that throws "invalid JSON arguments for tool ..." instead of an opaque crash.
 - **Where:** `src/engine/nodes/ai/openrouter-chat-model.ts` (`json.choices[0].message`, `JSON.parse(c.function.arguments)`).
 - **Problem:** Assumes `choices[0]` exists; `JSON.parse` of model-supplied tool-call arguments can throw on malformed output.
 - **Impact:** Turn fails (now degrades to the canned apology rather than crashing, but still a lost turn).

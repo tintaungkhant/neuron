@@ -90,7 +90,7 @@ describe('AiAgentNode — core', () => {
     ]);
   });
 
-  it('loads history before the call and appends the turn after', async () => {
+  it('loads history but does not persist (the caller commits after send)', async () => {
     const history: ChatMessage[] = [
       { role: 'user', content: 'earlier' },
       { role: 'assistant', content: 'reply' },
@@ -110,12 +110,8 @@ describe('AiAgentNode — core', () => {
       { role: 'assistant', content: 'reply' },
       { role: 'user', content: 'now' },
     ]);
-    expect(memory.appended).toEqual([
-      [
-        { role: 'user', content: 'now' },
-        { role: 'assistant', content: 'final' },
-      ],
-    ]);
+    // the agent returns the clean turn but does NOT write it to memory
+    expect(memory.appended).toEqual([]);
     expect(out.messages).toEqual([
       { role: 'user', content: 'now' },
       { role: 'assistant', content: 'final' },
@@ -277,7 +273,7 @@ describe('AiAgentNode — tools', () => {
     ).rejects.toThrow(/unknown tool "mystery"/);
   });
 
-  it('persists only the clean user+assistant turn, not tool messages', async () => {
+  it('returns only the clean user+assistant turn, not tool messages', async () => {
     const weather = new FakeTool('get_weather', { tempC: 21 });
     const memory = new FakeMemory();
     const model = new FakeChatModel([
@@ -300,7 +296,7 @@ describe('AiAgentNode — tools', () => {
       { role: 'user', content: 'weather?' },
       { role: 'assistant', content: 'It is 21C in Yangon.' },
     ];
-    expect(memory.appended).toEqual([cleanTurn]);
     expect(out.messages).toEqual(cleanTurn);
+    expect(memory.appended).toEqual([]); // agent never persists
   });
 });

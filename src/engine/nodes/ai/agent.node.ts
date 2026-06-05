@@ -114,14 +114,13 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
     }
 
     // The clean turn — final human + AI text only. Tool messages stay scratch.
+    // The agent does NOT persist it: the caller commits to memory only after the
+    // reply is actually delivered, so a failed send never leaves the model
+    // believing it said something the user never saw.
     const turn: ChatMessage[] = [
       userMsg,
       { role: 'assistant', content: finalAssistant.content },
     ];
-
-    if (memory) {
-      await memory.append(turn);
-    }
 
     return {
       output: finalAssistant.content,

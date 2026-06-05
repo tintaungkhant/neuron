@@ -31,8 +31,8 @@ describe('telegramWorkflow', () => {
   let engine: WorkflowEngine;
   let fetchSpy: jest.SpyInstance;
   let memory: { load: jest.Mock; append: jest.Mock };
-  let chatLookupLimit: jest.Mock;
   let chatInsertValues: jest.Mock;
+  let chatOnConflict: jest.Mock;
 
   beforeEach(async () => {
     memory = {
@@ -43,12 +43,17 @@ describe('telegramWorkflow', () => {
 
     mockAppDb.select.mockReset();
     mockAppDb.insert.mockReset();
-    chatLookupLimit = jest.fn().mockResolvedValue([]); // default: chat is new
-    const where = jest.fn().mockReturnValue({ limit: chatLookupLimit });
+    // chat upsert: insert(...).values(...).onConflictDoNothing(...)
+    chatOnConflict = jest.fn().mockResolvedValue(undefined);
+    chatInsertValues = jest.fn().mockReturnValue({
+      onConflictDoNothing: chatOnConflict,
+    });
+    mockAppDb.insert.mockReturnValue({ values: chatInsertValues });
+    // create_order (if a tool call ever reaches it) selects; default empty
+    const limit = jest.fn().mockResolvedValue([]);
+    const where = jest.fn().mockReturnValue({ limit });
     const from = jest.fn().mockReturnValue({ where });
     mockAppDb.select.mockReturnValue({ from });
-    chatInsertValues = jest.fn().mockResolvedValue(undefined);
-    mockAppDb.insert.mockReturnValue({ values: chatInsertValues });
 
     mod = await Test.createTestingModule({
       imports: [EngineModule],
@@ -203,7 +208,6 @@ describe('telegramWorkflow', () => {
 
     await engine.run(telegramWorkflow, payload);
 
-    expect(chatLookupLimit).toHaveBeenCalledWith(1);
     expect(mockAppDb.insert).toHaveBeenCalled();
     expect(chatInsertValues).toHaveBeenCalledWith({
       extId: 42,
@@ -506,9 +510,7 @@ describe('telegramWorkflow', () => {
     expect(body.text).toContain('တောင်းပန်'); // the canned apology, not a tech error
   });
 
-  it('skips chat insert when the chat already exists in the db', async () => {
-    chatLookupLimit.mockResolvedValueOnce([{ id: 123 }]);
-
+  it('upserts the chat race-safely with onConflictDoNothing (no pre-select)', async () => {
     const payload: TelegramWebhookPayload = {
       update_id: 5,
       message: {
@@ -527,6 +529,12 @@ describe('telegramWorkflow', () => {
 
     await engine.run(telegramWorkflow, payload);
 
-    expect(mockAppDb.insert).not.toHaveBeenCalled();
+    // no SELECT for chats — the upsert handles existence atomically
+    expect(mockAppDb.select).not.toHaveBeenCalled();
+    expect(chatInsertValues).toHaveBeenCalledWith({
+      extId: 99,
+      name: 'existing_user',
+    });
+    expect(chatOnConflict).toHaveBeenCalledTimes(1);
   });
 });

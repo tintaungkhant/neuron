@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm';
 import {
   AiAgentNode,
   GeminiReadImageNode,
@@ -99,17 +98,16 @@ export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
     const parsed = await wf.run(TelegramWebhookNode, payload);
 
     try {
-      const existing = await appDb
-        .select({ id: chats.id })
-        .from(chats)
-        .where(eq(chats.extId, parsed.chat.id))
-        .limit(1);
-      if (existing.length === 0) {
-        await appDb.insert(chats).values({
+      // Upsert the chat without a pre-select — a unique ext_id + onConflictDoNothing
+      // is race-safe, where select-then-insert let concurrent first messages
+      // double-insert.
+      await appDb
+        .insert(chats)
+        .values({
           extId: parsed.chat.id,
           name: parsed.from?.username ?? parsed.from?.firstName ?? null,
-        });
-      }
+        })
+        .onConflictDoNothing({ target: chats.extId });
 
       let agentInput: string;
       const attachment = parsed.attachment;
@@ -144,6 +142,10 @@ export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
         agentInput = parsed.text;
       }
 
+      const memory = new PgChatMemory({
+        sessionId: `${appConfig.id}:${parsed.chat.id}`,
+      });
+
       const agent = await wf.run(AiAgentNode, {
         input: agentInput,
         systemPrompt: SYSTEM_PROMPT,
@@ -151,9 +153,7 @@ export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
           apiKey: appConfig.openRouterApiKey,
           model: appConfig.openRouterModel,
         }),
-        memory: new PgChatMemory({
-          sessionId: `${appConfig.id}:${parsed.chat.id}`,
-        }),
+        memory,
         tools: [
           new GetServicesTool(),
           new GetPaymentMethodsTool(),
@@ -167,6 +167,10 @@ export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
         chatId: parsed.chat.id,
         text: agent.output,
       });
+
+      // Commit the turn to memory ONLY after the reply was delivered, so a
+      // failed send never poisons history with a message the user didn't see.
+      await memory.append(agent.messages);
     } catch (err) {
       // Catch-all: apologize to the customer, then rethrow so the failure is
       // still recorded in the trace / executions. The apology send gets its own

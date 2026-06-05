@@ -18,7 +18,7 @@ export const paymentMethods = pgTable('payment_methods', {
 
 export const chats = pgTable('chats', {
   id: serial('id').primaryKey(),
-  extId: bigint('ext_id', { mode: 'number' }),
+  extId: bigint('ext_id', { mode: 'number' }).notNull().unique(),
   name: text('name'),
 });
 

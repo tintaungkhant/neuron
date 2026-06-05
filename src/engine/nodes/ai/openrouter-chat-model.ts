@@ -52,14 +52,22 @@ function fromOpenAiMessage(m: OpenAiMessage): ChatMessage {
     out.toolCalls = m.tool_calls.map<ToolCall>((c) => ({
       id: c.id,
       name: c.function.name,
-      arguments: JSON.parse(c.function.arguments || '{}') as Record<
-        string,
-        unknown
-      >,
+      arguments: parseToolArguments(c.function.name, c.function.arguments),
     }));
   }
   if (m.tool_call_id) out.toolCallId = m.tool_call_id;
   return out;
+}
+
+function parseToolArguments(
+  name: string,
+  raw: string,
+): Record<string, unknown> {
+  try {
+    return JSON.parse(raw || '{}') as Record<string, unknown>;
+  } catch {
+    throw new Error(`OpenRouter: invalid JSON arguments for tool "${name}"`);
+  }
 }
 
 function toOpenAiTool(spec: ToolSpec) {
@@ -100,8 +108,12 @@ export class OpenRouterChatModel implements ChatModel {
     }
 
     const json = (await res.json()) as {
-      choices: { message: OpenAiMessage }[];
+      choices?: { message?: OpenAiMessage }[];
     };
-    return { message: fromOpenAiMessage(json.choices[0].message) };
+    const message = json.choices?.[0]?.message;
+    if (!message) {
+      throw new Error('OpenRouter: no message in response');
+    }
+    return { message: fromOpenAiMessage(message) };
   }
 }

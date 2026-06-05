@@ -22,6 +22,13 @@
       "when": 1779517442037,
       "tag": "0002_nifty_wallflower",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780675093427,
+      "tag": "0003_nervous_smasher",
+      "breakpoints": true
     }
   ]
 }
