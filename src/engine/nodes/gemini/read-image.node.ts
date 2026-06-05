@@ -3,7 +3,7 @@ import { Node } from '../../node';
 import { GEMINI_BASE, geminiError } from './gemini-http';
 import { fetchWithTimeout } from '../../http';
 
-const TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 60_000;
 
 export interface GeminiReadImageInput {
   apiKey: string;
@@ -11,6 +11,7 @@ export interface GeminiReadImageInput {
   fileUri: string;
   mimeType: string;
   prompt: string;
+  timeoutMs?: number; // defaults to 60s
 }
 
 export interface GeminiReadImageOutput {
@@ -48,7 +49,7 @@ export class GeminiReadImageNode extends Node<
           ],
         }),
       },
-      TIMEOUT_MS,
+      input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       'Gemini generateContent',
     );
     if (!res.ok) {

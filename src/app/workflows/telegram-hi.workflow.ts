@@ -92,7 +92,7 @@ const PHOTO_MIME = 'image/jpeg';
 // Shown to the customer on ANY failure — a fixed, non-technical apology so no
 // error detail (DB, API, timeout, …) ever leaks into the chat.
 const SORRY_MESSAGE =
-  'တောင်းပန်ပါတယ်ရှင် 🙏 စက်မှာ အနည်းငယ် ပြဿနာလေး ဖြစ်နေလို့ပါ။ ခဏနေ ပြန်ပို့ပေးပါနော်။';
+  'တောင်းပန်ပါတယ်ရှင် 🙏 System error လေးဖြစ်နေလို့ ခဏနေ Admin မှ စာပြန်ပို့ပေးပါမယ်နော်။';
 
 export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
   async function telegramWorkflow(payload, wf) {

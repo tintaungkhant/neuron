@@ -3,8 +3,8 @@ import { Node } from '../../node';
 import { GEMINI_BASE, geminiError, sleep } from './gemini-http';
 import { fetchWithTimeout } from '../../http';
 
-const TIMEOUT_MS = 30_000; // source fetch, session start, poll
-const UPLOAD_TIMEOUT_MS = 120_000; // streaming the bytes can be large/slow
+const DEFAULT_TIMEOUT_MS = 30_000; // source fetch, session start, poll
+const DEFAULT_UPLOAD_TIMEOUT_MS = 120_000; // streaming the bytes can be large/slow
 
 export interface GeminiUploadFileInput {
   apiKey: string;
@@ -12,6 +12,8 @@ export interface GeminiUploadFileInput {
   mimeType: string;
   fileSize: number;
   displayName?: string;
+  timeoutMs?: number; // source fetch / start / poll, defaults to 30s
+  uploadTimeoutMs?: number; // the streamed byte upload, defaults to 120s
 }
 
 export interface GeminiUploadFileOutput {
@@ -40,7 +42,7 @@ export class GeminiUploadFileNode extends Node<
     const src = await fetchWithTimeout(
       input.url,
       {},
-      TIMEOUT_MS,
+      input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       'image source fetch',
     );
     if (!src.ok || !src.body) {
@@ -63,7 +65,7 @@ export class GeminiUploadFileNode extends Node<
           file: { display_name: input.displayName ?? 'upload' },
         }),
       },
-      TIMEOUT_MS,
+      input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       'Gemini upload start',
     );
     if (!startRes.ok) {
@@ -90,7 +92,7 @@ export class GeminiUploadFileNode extends Node<
     const uploadRes = await fetchWithTimeout(
       uploadUrl,
       uploadInit,
-      UPLOAD_TIMEOUT_MS,
+      input.uploadTimeoutMs ?? DEFAULT_UPLOAD_TIMEOUT_MS,
       'Gemini upload',
     );
     if (!uploadRes.ok) {
@@ -111,7 +113,7 @@ export class GeminiUploadFileNode extends Node<
       const pollRes = await fetchWithTimeout(
         `${GEMINI_BASE}/v1beta/${file.name}?key=${input.apiKey}`,
         {},
-        TIMEOUT_MS,
+        input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         'Gemini files get',
       );
       if (!pollRes.ok) {

@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { Node } from '../../node';
 import { fetchWithTimeout } from '../../http';
 
-const TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 export interface TelegramGetFileInput {
   botToken: string;
   fileId: string;
+  timeoutMs?: number; // defaults to 15s
 }
 
 export interface TelegramGetFileOutput {
@@ -29,7 +30,12 @@ export class TelegramGetFileNode extends Node<
     const url = `https://api.telegram.org/bot${input.botToken}/getFile?file_id=${encodeURIComponent(
       input.fileId,
     )}`;
-    const res = await fetchWithTimeout(url, {}, TIMEOUT_MS, 'Telegram getFile');
+    const res = await fetchWithTimeout(
+      url,
+      {},
+      input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      'Telegram getFile',
+    );
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`getFile failed: ${res.status} ${body}`);

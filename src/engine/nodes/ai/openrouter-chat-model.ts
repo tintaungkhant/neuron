@@ -9,11 +9,12 @@ import type { ToolSpec } from '../../ai/tool';
 import { fetchWithTimeout } from '../../http';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 60_000;
 
 export interface OpenRouterChatModelOptions {
   apiKey: string;
   model: string;
+  timeoutMs?: number; // defaults to 60s
 }
 
 interface OpenAiToolCall {
@@ -90,7 +91,7 @@ export class OpenRouterChatModel implements ChatModel {
           tools: req.tools?.map(toOpenAiTool),
         }),
       },
-      TIMEOUT_MS,
+      this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       'OpenRouter',
     );
 

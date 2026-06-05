@@ -2,12 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Node } from '../../node';
 import { fetchWithTimeout } from '../../http';
 
-const TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 export type TelegramSendMessageInput = {
   botToken: string;
   chatId: number;
   text: string;
+  timeoutMs?: number; // defaults to 15s
 };
 
 @Injectable()
@@ -26,7 +27,7 @@ export class TelegramSendMessageNode extends Node<
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ chat_id: input.chatId, text: input.text }),
       },
-      TIMEOUT_MS,
+      input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       'Telegram sendMessage',
     );
 
