@@ -6,8 +6,10 @@ import type {
   ToolCall,
 } from '../../ai/chat-model';
 import type { ToolSpec } from '../../ai/tool';
+import { fetchWithTimeout } from '../../http';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const TIMEOUT_MS = 60_000;
 
 export interface OpenRouterChatModelOptions {
   apiKey: string;
@@ -74,18 +76,23 @@ export class OpenRouterChatModel implements ChatModel {
   constructor(private readonly opts: OpenRouterChatModelOptions) {}
 
   async complete(req: ChatCompletionRequest): Promise<ChatCompletionResult> {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${this.opts.apiKey}`,
-        'content-type': 'application/json',
+    const res = await fetchWithTimeout(
+      OPENROUTER_URL,
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.opts.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.opts.model,
+          messages: req.messages.map(toOpenAiMessage),
+          tools: req.tools?.map(toOpenAiTool),
+        }),
       },
-      body: JSON.stringify({
-        model: this.opts.model,
-        messages: req.messages.map(toOpenAiMessage),
-        tools: req.tools?.map(toOpenAiTool),
-      }),
-    });
+      TIMEOUT_MS,
+      'OpenRouter',
+    );
 
     if (!res.ok) {
       throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);

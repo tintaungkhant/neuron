@@ -164,6 +164,36 @@ describe('AiAgentNode — tools', () => {
     });
   });
 
+  it('feeds a tool failure back to the model instead of crashing the turn', async () => {
+    const boom: AgentTool = {
+      name: 'boom',
+      description: 'always fails',
+      parameters: { type: 'object', properties: {} },
+      execute: () => Promise.reject(new Error('db down')),
+    };
+    const model = new FakeChatModel([
+      toolCall({ id: 'c1', name: 'boom', arguments: {} }),
+      assistant('sorry, having trouble right now'),
+    ]);
+
+    const out = await new AiAgentNode().execute({
+      input: 'hi',
+      chatModel: model,
+      tools: [boom],
+    });
+
+    expect(out.output).toBe('sorry, having trouble right now');
+    expect(out.toolSteps).toHaveLength(1);
+    expect(out.toolSteps[0]).toMatchObject({ name: 'boom', status: 'error' });
+    // the model's next call saw the error as the tool result
+    expect(model.calls[1].messages).toContainEqual(
+      expect.objectContaining({
+        role: 'tool',
+        content: expect.stringContaining('db down') as unknown,
+      }),
+    );
+  });
+
   it('throws when the model keeps calling tools past maxSteps', async () => {
     const spin = new FakeTool('spin', 'again');
     const model = new FakeChatModel(

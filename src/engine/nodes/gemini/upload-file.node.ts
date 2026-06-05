@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Node } from '../../node';
 import { GEMINI_BASE, geminiError, sleep } from './gemini-http';
+import { fetchWithTimeout } from '../../http';
+
+const TIMEOUT_MS = 30_000; // source fetch, session start, poll
+const UPLOAD_TIMEOUT_MS = 120_000; // streaming the bytes can be large/slow
 
 export interface GeminiUploadFileInput {
   apiKey: string;
@@ -33,13 +37,18 @@ export class GeminiUploadFileNode extends Node<
   GeminiUploadFileOutput
 > {
   async execute(input: GeminiUploadFileInput): Promise<GeminiUploadFileOutput> {
-    const src = await fetch(input.url);
+    const src = await fetchWithTimeout(
+      input.url,
+      {},
+      TIMEOUT_MS,
+      'image source fetch',
+    );
     if (!src.ok || !src.body) {
       await geminiError('upload source fetch failed', src);
     }
 
     // 1. Start a resumable upload session.
-    const startRes = await fetch(
+    const startRes = await fetchWithTimeout(
       `${GEMINI_BASE}/upload/v1beta/files?key=${input.apiKey}`,
       {
         method: 'POST',
@@ -54,6 +63,8 @@ export class GeminiUploadFileNode extends Node<
           file: { display_name: input.displayName ?? 'upload' },
         }),
       },
+      TIMEOUT_MS,
+      'Gemini upload start',
     );
     if (!startRes.ok) {
       await geminiError('files upload start failed', startRes);
@@ -76,7 +87,12 @@ export class GeminiUploadFileNode extends Node<
       body: src.body,
       duplex: 'half',
     };
-    const uploadRes = await fetch(uploadUrl, uploadInit);
+    const uploadRes = await fetchWithTimeout(
+      uploadUrl,
+      uploadInit,
+      UPLOAD_TIMEOUT_MS,
+      'Gemini upload',
+    );
     if (!uploadRes.ok) {
       await geminiError('files upload failed', uploadRes);
     }
@@ -92,8 +108,11 @@ export class GeminiUploadFileNode extends Node<
       }
       await sleep(POLL_DELAY_MS);
       attempts++;
-      const pollRes = await fetch(
+      const pollRes = await fetchWithTimeout(
         `${GEMINI_BASE}/v1beta/${file.name}?key=${input.apiKey}`,
+        {},
+        TIMEOUT_MS,
+        'Gemini files get',
       );
       if (!pollRes.ok) {
         await geminiError('files get failed', pollRes);

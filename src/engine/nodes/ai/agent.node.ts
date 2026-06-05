@@ -70,14 +70,23 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
           throw new Error(`AiAgentNode: unknown tool "${call.name}"`);
         }
         const startedAt = Date.now();
-        const result = await tool.execute(call.arguments);
+        let result: unknown;
+        let status: 'ok' | 'error' = 'ok';
+        try {
+          result = await tool.execute(call.arguments);
+        } catch (e) {
+          // A tool failure must not kill the turn — hand the error back to the
+          // model so it can recover or apologize, and record it in the trace.
+          status = 'error';
+          result = { error: e instanceof Error ? e.message : String(e) };
+        }
         toolSteps.push({
           name: call.name,
           input: call.arguments,
           output: result,
           startedAt,
           finishedAt: Date.now(),
-          status: 'ok',
+          status,
         });
         messages.push({
           role: 'tool',

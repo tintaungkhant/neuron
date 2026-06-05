@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Node } from '../../node';
 import { GEMINI_BASE, geminiError } from './gemini-http';
+import { fetchWithTimeout } from '../../http';
+
+const TIMEOUT_MS = 60_000;
 
 export interface GeminiReadImageInput {
   apiKey: string;
@@ -24,7 +27,7 @@ export class GeminiReadImageNode extends Node<
   GeminiReadImageOutput
 > {
   async execute(input: GeminiReadImageInput): Promise<GeminiReadImageOutput> {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${GEMINI_BASE}/v1beta/models/${input.model}:generateContent?key=${input.apiKey}`,
       {
         method: 'POST',
@@ -45,6 +48,8 @@ export class GeminiReadImageNode extends Node<
           ],
         }),
       },
+      TIMEOUT_MS,
+      'Gemini generateContent',
     );
     if (!res.ok) {
       await geminiError('generateContent failed', res);
