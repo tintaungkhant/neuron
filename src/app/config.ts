@@ -7,6 +7,7 @@ export type AppConfig = {
   geminiModel: string;
   redisUrl: string;
   queueConcurrency: number;
+  devUiEnabled: boolean;
 };
 
 function requireEnv(name: string): string {
@@ -24,4 +25,5 @@ export const appConfig: AppConfig = {
   geminiModel: requireEnv('GEMINI_MODEL'),
   redisUrl: requireEnv('REDIS_URL'),
   queueConcurrency: Number(process.env.QUEUE_CONCURRENCY) || 5,
+  devUiEnabled: process.env.DEV_UI_ENABLED === 'true',
 };
