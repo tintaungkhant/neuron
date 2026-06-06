@@ -1,5 +1,7 @@
-// Self-contained dev UI page: Tailwind Play CDN + Mermaid 11 ESM + vanilla JS.
-// Served verbatim by DevController at GET /dev. No build step, no npm deps.
+// Self-contained dev UI page: Tailwind Play CDN + vanilla JS. Renders an
+// execution trace as a card flow — a horizontal spine of step cards in
+// execution order, with each node's tool calls / sub-workflow steps dropping
+// into a vertical branch beneath it. No build step, no npm deps.
 export const DEV_UI_PAGE = `<!doctype html>
 <html lang="en">
 <head>
@@ -10,7 +12,7 @@ export const DEV_UI_PAGE = `<!doctype html>
 </head>
 <body class="bg-slate-50 text-slate-800">
 <div class="flex h-screen">
-  <aside class="w-96 shrink-0 border-r border-slate-200 overflow-y-auto">
+  <aside class="w-80 shrink-0 border-r border-slate-200 overflow-y-auto">
     <h1 class="p-4 text-lg font-semibold">Executions</h1>
     <table class="w-full text-sm">
       <thead class="text-left text-slate-500"><tr>
@@ -20,75 +22,124 @@ export const DEV_UI_PAGE = `<!doctype html>
     </table>
   </aside>
   <main class="flex-1 flex flex-col overflow-hidden">
-    <div id="chart" class="flex-1 overflow-auto p-4"></div>
-    <section id="detail" class="h-1/2 border-t border-slate-200 overflow-auto p-4 text-xs font-mono whitespace-pre-wrap"></section>
+    <div id="chart" class="flex-1 overflow-auto p-6"></div>
+    <section id="detail" class="h-1/2 border-t border-slate-200 overflow-auto p-4 text-xs font-mono whitespace-pre-wrap bg-slate-900 text-slate-100"></section>
   </main>
 </div>
-<script type="module">
-import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { useMaxWidth: false } });
-
+<script>
 const stepIndex = {};
+let selectedEl = null;
 
-function esc(s){ return String(s).replace(/"/g, '&quot;').replace(/\\n/g, ' '); }
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function durOf(s){ return (s.finishedAt && s.startedAt) ? (s.finishedAt - s.startedAt) : 0; }
+function kidsOf(step){
+  if (step.kind === 'node') return step.children || [];
+  if (step.kind === 'subworkflow') return (step.trace && step.trace.steps) || [];
+  return [];
+}
 
-// Render steps as a sequential spine (prev --> current), matching real
-// execution order. A node's tool calls (or a sub-workflow's inner steps)
-// branch off that node and chain among themselves, while the main spine
-// continues from the node to its next sibling.
-function walkLevel(steps, parentId, prefix, lines){
-  let prev = parentId;
+function card(id, step){
+  const ok = step.status !== 'error';
+  const el = document.createElement('div');
+  el.className = 'cursor-pointer select-none rounded-xl border bg-white px-3 py-2 shadow-sm transition hover:shadow-md min-w-[150px] max-w-[230px] ' +
+    (ok ? 'border-emerald-300' : 'border-red-300 bg-red-50');
+  el.innerHTML =
+    '<div class="text-[10px] font-semibold uppercase tracking-wide ' + (ok ? 'text-emerald-600' : 'text-red-600') + '">' + escHtml(step.kind) + '</div>' +
+    '<div class="font-medium text-sm text-slate-800 truncate">' + escHtml(step.name) + '</div>' +
+    '<div class="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">' +
+      '<span class="rounded bg-slate-100 px-1.5 py-0.5">' + durOf(step) + 'ms</span>' +
+      (step.usage ? '<span class="rounded bg-indigo-50 text-indigo-600 px-1.5 py-0.5">' + (step.usage.totalTokens || 0) + ' tok</span>' : '') +
+    '</div>';
+  el.onclick = () => selectStep(id, el);
+  return el;
+}
+
+function arrow(){
+  const a = document.createElement('div');
+  a.className = 'self-center text-slate-300 text-2xl px-1 shrink-0';
+  a.textContent = '→';
+  return a;
+}
+
+function downArrow(){
+  const d = document.createElement('div');
+  d.className = 'text-slate-300 text-sm leading-none pl-1';
+  d.textContent = '↓';
+  return d;
+}
+
+// Top level: a horizontal spine. Each cell = a card plus, if it has children,
+// a vertical branch underneath.
+function renderSpine(steps, container, prefix){
   steps.forEach((step, i) => {
     const id = prefix + i;
     stepIndex[id] = step;
-    const dur = (step.finishedAt && step.startedAt) ? (step.finishedAt - step.startedAt) : 0;
-    lines.push(id + '["' + esc(step.name + ' [' + step.kind + '] ' + dur + 'ms') + '"]');
-    lines.push(prev + ' --> ' + id);
-    lines.push('class ' + id + ' ' + (step.status === 'error' ? 'err' : 'ok'));
-    lines.push('click ' + id + ' call showStep("' + id + '")');
-    let kids = [];
-    if (step.kind === 'node') kids = step.children || [];
-    else if (step.kind === 'subworkflow') kids = (step.trace && step.trace.steps) || [];
-    if (kids.length) walkLevel(kids, id, id + '_', lines);
-    prev = id;
+    if (i > 0) container.appendChild(arrow());
+    const cell = document.createElement('div');
+    cell.className = 'flex flex-col gap-2';
+    cell.appendChild(card(id, step));
+    const kids = kidsOf(step);
+    if (kids.length){
+      const sub = document.createElement('div');
+      sub.className = 'ml-3 border-l-2 border-slate-200 pl-3 flex flex-col gap-1';
+      renderBranch(kids, sub, id + '_');
+      cell.appendChild(sub);
+    }
+    container.appendChild(cell);
   });
 }
 
-window.showStep = (id) => {
+// Branch (tool calls / sub-workflow steps): stacked vertically in run order.
+function renderBranch(steps, container, prefix){
+  steps.forEach((step, i) => {
+    const id = prefix + i;
+    stepIndex[id] = step;
+    if (i > 0) container.appendChild(downArrow());
+    const wrap = document.createElement('div');
+    wrap.className = 'flex flex-col gap-1';
+    wrap.appendChild(card(id, step));
+    const kids = kidsOf(step);
+    if (kids.length){
+      const sub = document.createElement('div');
+      sub.className = 'ml-3 border-l-2 border-slate-200 pl-3 flex flex-col gap-1';
+      renderBranch(kids, sub, id + '_');
+      wrap.appendChild(sub);
+    }
+    container.appendChild(wrap);
+  });
+}
+
+function selectStep(id, el){
+  if (selectedEl) selectedEl.classList.remove('ring-2','ring-blue-500');
+  if (el){ el.classList.add('ring-2','ring-blue-500'); selectedEl = el; }
   const s = stepIndex[id];
-  if (!s) return;
-  const dur = (s.finishedAt && s.startedAt) ? (s.finishedAt - s.startedAt) : 0;
+  if (!s){ return; }
   const parts = [];
-  parts.push('# ' + s.name + '  (' + s.kind + ', ' + s.status + ', ' + dur + 'ms)');
+  parts.push('# ' + s.name + '  (' + s.kind + ', ' + s.status + ', ' + durOf(s) + 'ms)');
   if (s.usage) parts.push('tokens: ' + JSON.stringify(s.usage));
   if (s.error) parts.push('ERROR: ' + (s.error.message || ''));
   parts.push('\\nINPUT:\\n' + JSON.stringify(s.input, null, 2));
   parts.push('\\nOUTPUT:\\n' + JSON.stringify(s.output, null, 2));
   document.getElementById('detail').textContent = parts.join('\\n');
-};
+}
 
 async function loadRun(id){
   const chart = document.getElementById('chart');
   const rec = await fetch('/dev/api/executions/' + id).then(r => r.ok ? r.json() : null);
   if (!rec){ chart.textContent = 'not found'; return; }
   for (const k in stepIndex) delete stepIndex[k];
+  selectedEl = null;
+  chart.innerHTML = '';
   const t = rec.trace;
-  const lines = ['flowchart LR'];
-  lines.push('classDef ok fill:#dcfce7,stroke:#16a34a,color:#064e3b');
-  lines.push('classDef err fill:#fee2e2,stroke:#dc2626,color:#7f1d1d');
   stepIndex['root'] = { name: t.workflowName, kind: 'workflow', status: t.status, input: t.input, output: t.output, error: t.error, startedAt: t.startedAt, finishedAt: t.finishedAt };
-  lines.push('root["' + esc(t.workflowName) + '"]');
-  lines.push('class root ' + (t.status === 'error' ? 'err' : 'ok'));
-  lines.push('click root call showStep("root")');
-  walkLevel(t.steps || [], 'root', 's', lines);
-  try {
-    const { svg, bindFunctions } = await mermaid.render('g' + id, lines.join('\\n'));
-    chart.innerHTML = svg;
-    if (bindFunctions) bindFunctions(chart);
-  } catch (e) {
-    chart.textContent = 'render error: ' + e.message;
-  }
-  showStep('root');
+  const spine = document.createElement('div');
+  spine.className = 'flex flex-row items-start gap-1 w-max';
+  const rootCard = card('root', stepIndex['root']);
+  spine.appendChild(rootCard);
+  if ((t.steps || []).length) spine.appendChild(arrow());
+  renderSpine(t.steps || [], spine, 's');
+  chart.appendChild(spine);
+  selectStep('root', rootCard);
 }
 
 async function loadList(){
@@ -100,7 +151,7 @@ async function loadList(){
     tr.className = 'cursor-pointer hover:bg-slate-100 border-t border-slate-100';
     const color = r.status === 'error' ? 'text-red-600' : 'text-green-600';
     tr.innerHTML = '<td class="px-3 py-2">' + r.id + '</td>' +
-      '<td>' + r.workflowName + '</td>' +
+      '<td>' + escHtml(r.workflowName) + '</td>' +
       '<td class="' + color + '">' + r.status + '</td>' +
       '<td>' + r.durationMs + '</td>' +
       '<td>' + r.tokensTotal + '</td>';
