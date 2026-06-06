@@ -1,33 +1,20 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getQueueToken } from '@nestjs/bullmq';
 import request from 'supertest';
-import { ExecutionStore, WorkflowEngine } from '../../engine';
-import { telegramWorkflow } from '../workflows/telegram-hi.workflow';
 import { TelegramController } from './telegram.controller';
+import { TELEGRAM_QUEUE, PROCESS_UPDATE_JOB } from '../queue/queue.constants';
 
 describe('TelegramController', () => {
   let app: INestApplication;
-  let runMock: jest.Mock;
-  let saveMock: jest.Mock;
+  let addMock: jest.Mock;
 
   beforeEach(async () => {
-    runMock = jest.fn().mockResolvedValue({
-      result: undefined,
-      trace: {
-        workflowName: 'telegramWorkflow',
-        startedAt: 0,
-        finishedAt: 0,
-        status: 'ok',
-        input: {},
-        steps: [],
-      },
-    });
-    saveMock = jest.fn().mockResolvedValue(1);
+    addMock = jest.fn().mockResolvedValue(undefined);
     const mod: TestingModule = await Test.createTestingModule({
       controllers: [TelegramController],
       providers: [
-        { provide: WorkflowEngine, useValue: { run: runMock } },
-        { provide: ExecutionStore, useValue: { save: saveMock } },
+        { provide: getQueueToken(TELEGRAM_QUEUE), useValue: { add: addMock } },
       ],
     }).compile();
     app = mod.createNestApplication();
@@ -38,9 +25,9 @@ describe('TelegramController', () => {
     await app.close();
   });
 
-  it('runs the demo telegram workflow and returns 200', async () => {
+  it('enqueues the update with jobId = update_id and returns 200', async () => {
     const update = {
-      update_id: 1,
+      update_id: 42,
       message: {
         message_id: 1,
         chat: { id: 5, type: 'private' },
@@ -56,21 +43,31 @@ describe('TelegramController', () => {
       .expect(200)
       .expect({ ok: true });
 
-    expect(runMock).toHaveBeenCalledTimes(1);
-    const [wf, input] = runMock.mock.calls[0] as [unknown, unknown];
-    expect(wf).toBe(telegramWorkflow);
-    expect(input).toEqual(update);
-    expect(saveMock).toHaveBeenCalledTimes(1);
+    expect(addMock).toHaveBeenCalledTimes(1);
+    const [name, data, opts] = addMock.mock.calls[0] as [
+      string,
+      unknown,
+      { jobId?: string; attempts?: number },
+    ];
+    expect(name).toBe(PROCESS_UPDATE_JOB);
+    expect(data).toEqual(update);
+    expect(opts.jobId).toBe('42');
+    expect(opts.attempts).toBe(1);
   });
 
-  it('returns 200 even when the workflow throws', async () => {
-    runMock.mockRejectedValue(new Error('boom'));
-
+  it('still returns 200 when update_id is absent (no jobId)', async () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     await request(app.getHttpServer())
       .post('/api/demo/telegram/webhook')
       .send({})
       .expect(200)
       .expect({ ok: true });
+
+    const [, , opts] = addMock.mock.calls[0] as [
+      string,
+      unknown,
+      { jobId?: string },
+    ];
+    expect(opts.jobId).toBeUndefined();
   });
 });
