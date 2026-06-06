@@ -1,4 +1,5 @@
 import type { ToolSpec } from './tool';
+import type { TokenUsage } from '../trace';
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -22,6 +23,7 @@ export interface ChatCompletionRequest {
 
 export interface ChatCompletionResult {
   message: ChatMessage; // the assistant message (may carry toolCalls)
+  usage?: TokenUsage; // token counts for this call, when the provider reports them
 }
 
 export interface ChatModel {

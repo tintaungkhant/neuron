@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { executions } from '../db/schema';
-import { enrichTrace, countSteps, truncateTrace } from '../trace-format';
+import {
+  enrichTrace,
+  countSteps,
+  truncateTrace,
+  sumTokens,
+} from '../trace-format';
 import type { Trace } from '../trace';
 
 export interface ExecutionSummary {
@@ -11,12 +16,15 @@ export interface ExecutionSummary {
   status: string;
   durationMs: number;
   stepCount: number;
+  tokensTotal: number;
   createdAt: Date;
 }
 
 export interface ExecutionRecord extends ExecutionSummary {
   startedAt: Date;
   finishedAt: Date;
+  tokensPrompt: number;
+  tokensCompletion: number;
   trace: Trace;
 }
 
@@ -30,6 +38,7 @@ export class ExecutionStore {
   async save(trace: Trace): Promise<number> {
     const enriched = enrichTrace(trace);
     const stored = truncateTrace(enriched); // bound row size; folds already done
+    const usage = sumTokens(enriched);
     const [row] = await db
       .insert(executions)
       .values({
@@ -39,6 +48,9 @@ export class ExecutionStore {
         finishedAt: new Date(enriched.finishedAt),
         durationMs: enriched.finishedAt - enriched.startedAt,
         stepCount: countSteps(enriched),
+        tokensPrompt: usage.promptTokens,
+        tokensCompletion: usage.completionTokens,
+        tokensTotal: usage.totalTokens,
         trace: stored,
       })
       .returning({ id: executions.id });
@@ -53,6 +65,7 @@ export class ExecutionStore {
         status: executions.status,
         durationMs: executions.durationMs,
         stepCount: executions.stepCount,
+        tokensTotal: executions.tokensTotal,
         createdAt: executions.createdAt,
       })
       .from(executions)
@@ -73,6 +86,9 @@ export class ExecutionStore {
       status: row.status,
       durationMs: row.durationMs,
       stepCount: row.stepCount,
+      tokensTotal: row.tokensTotal,
+      tokensPrompt: row.tokensPrompt,
+      tokensCompletion: row.tokensCompletion,
       createdAt: row.createdAt,
       startedAt: row.startedAt,
       finishedAt: row.finishedAt,

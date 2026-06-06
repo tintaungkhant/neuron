@@ -3,6 +3,7 @@ import { Node } from '../../node';
 import type { ChatMessage, ChatModel } from '../../ai/chat-model';
 import type { ChatMemory } from '../../ai/memory';
 import type { AgentTool, ToolSpec } from '../../ai/tool';
+import type { TokenUsage } from '../../trace';
 import { sleep } from '../../sleep';
 
 const MAX_TOOL_RETRIES = 5; // hard cap so a tool's retry policy can't stall a turn
@@ -32,6 +33,7 @@ export interface AiAgentOutput {
   output: string; // final assistant text
   messages: ChatMessage[]; // this turn's messages: user msg + every assistant/tool msg
   toolSteps: AgentToolStep[]; // tools invoked this run, in call order, with in/out (for tracing)
+  usage?: TokenUsage; // summed token usage across every model call this turn
 }
 
 @Injectable()
@@ -60,6 +62,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
 
     let finalAssistant: ChatMessage | undefined;
     const toolSteps: AgentToolStep[] = [];
+    let usage: TokenUsage | undefined;
 
     for (let step = 0; step < maxSteps; step++) {
       if (Date.now() > deadline) {
@@ -68,6 +71,14 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
         );
       }
       const res = await chatModel.complete({ messages, tools: toolSpecs });
+      if (res.usage) {
+        usage = {
+          promptTokens: (usage?.promptTokens ?? 0) + res.usage.promptTokens,
+          completionTokens:
+            (usage?.completionTokens ?? 0) + res.usage.completionTokens,
+          totalTokens: (usage?.totalTokens ?? 0) + res.usage.totalTokens,
+        };
+      }
       const assistantMsg = res.message;
       messages.push(assistantMsg);
 
@@ -144,6 +155,7 @@ export class AiAgentNode extends Node<AiAgentInput, AiAgentOutput> {
       output: finalAssistant.content,
       messages: turn,
       toolSteps,
+      usage,
     };
   }
 }

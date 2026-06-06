@@ -3,6 +3,7 @@ import {
   enrichTrace,
   countSteps,
   truncateTrace,
+  sumTokens,
 } from './trace-format';
 import type { Trace } from './trace';
 
@@ -65,6 +66,92 @@ describe('enrichTrace', () => {
     ]);
     // toolSteps stripped from the node output (now lives in children)
     expect(step.output).toEqual({ output: 'hi', messages: [] });
+  });
+
+  it('lifts usage off a node output onto the step and strips it', () => {
+    const trace: Trace = {
+      workflowName: 'wf',
+      startedAt: 0,
+      finishedAt: 100,
+      status: 'ok',
+      input: {},
+      steps: [
+        {
+          kind: 'node',
+          name: 'AiAgentNode',
+          input: {},
+          output: {
+            output: 'hi',
+            messages: [],
+            usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+          },
+          startedAt: 0,
+          finishedAt: 100,
+          status: 'ok',
+        },
+      ],
+    };
+
+    const step = enrichTrace(trace).steps[0];
+    if (step.kind !== 'node') throw new Error('expected node');
+    expect(step.usage).toEqual({
+      promptTokens: 10,
+      completionTokens: 5,
+      totalTokens: 15,
+    });
+    expect(step.output).toEqual({ output: 'hi', messages: [] });
+  });
+
+  it('sets sub-workflow step usage to the child total', () => {
+    const trace: Trace = {
+      workflowName: 'parent',
+      startedAt: 0,
+      finishedAt: 100,
+      status: 'ok',
+      input: {},
+      steps: [
+        {
+          kind: 'subworkflow',
+          name: 'child',
+          input: {},
+          startedAt: 0,
+          finishedAt: 100,
+          status: 'ok',
+          trace: {
+            workflowName: 'child',
+            startedAt: 0,
+            finishedAt: 100,
+            status: 'ok',
+            input: {},
+            steps: [
+              {
+                kind: 'node',
+                name: 'AiAgentNode',
+                input: {},
+                output: {
+                  usage: {
+                    promptTokens: 7,
+                    completionTokens: 2,
+                    totalTokens: 9,
+                  },
+                },
+                startedAt: 0,
+                finishedAt: 100,
+                status: 'ok',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const step = enrichTrace(trace).steps[0];
+    if (step.kind !== 'subworkflow') throw new Error('expected subworkflow');
+    expect(step.usage).toEqual({
+      promptTokens: 7,
+      completionTokens: 2,
+      totalTokens: 9,
+    });
   });
 
   it('recurses into sub-workflows', () => {
@@ -223,6 +310,96 @@ describe('countSteps', () => {
   });
 });
 
+describe('sumTokens', () => {
+  it('sums node usage and recurses into sub-workflows', () => {
+    const trace: Trace = {
+      workflowName: 'parent',
+      startedAt: 0,
+      finishedAt: 100,
+      status: 'ok',
+      input: {},
+      steps: [
+        {
+          kind: 'node',
+          name: 'AiAgentNode',
+          input: {},
+          output: {
+            usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+          },
+          startedAt: 0,
+          finishedAt: 10,
+          status: 'ok',
+        },
+        {
+          kind: 'subworkflow',
+          name: 'child',
+          input: {},
+          startedAt: 10,
+          finishedAt: 20,
+          status: 'ok',
+          trace: {
+            workflowName: 'child',
+            startedAt: 10,
+            finishedAt: 20,
+            status: 'ok',
+            input: {},
+            steps: [
+              {
+                kind: 'node',
+                name: 'GeminiReadMediaNode',
+                input: {},
+                output: {
+                  usage: {
+                    promptTokens: 100,
+                    completionTokens: 20,
+                    totalTokens: 120,
+                  },
+                },
+                startedAt: 10,
+                finishedAt: 20,
+                status: 'ok',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    expect(sumTokens(enrichTrace(trace))).toEqual({
+      promptTokens: 110,
+      completionTokens: 25,
+      totalTokens: 135,
+    });
+  });
+
+  it('returns zeros for a trace with no usage', () => {
+    const trace: Trace = {
+      workflowName: 'wf',
+      startedAt: 0,
+      finishedAt: 1,
+      status: 'ok',
+      input: {},
+      steps: [
+        {
+          kind: 'node',
+          name: 'TelegramWebhookNode',
+          input: {},
+          output: {},
+          startedAt: 0,
+          finishedAt: 1,
+          status: 'ok',
+        },
+      ],
+    };
+
+    expect(sumTokens(trace)).toEqual({
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    });
+  });
+});
+
 describe('formatTrace', () => {
   it('renders the flow with per-step timing and surfaced tool steps', () => {
     const trace: Trace = {
@@ -269,6 +446,34 @@ describe('formatTrace', () => {
     expect(formatTrace(enrichTrace(trace))).toBe(
       'demoTelegramHiWorkflow ✓ 1200ms\n' +
         '  telegram webhook (2ms) → ai agent (1098ms) → get services (40ms) → telegram send message (100ms)',
+    );
+  });
+
+  it('appends token counts per node and for the workflow', () => {
+    const trace: Trace = {
+      workflowName: 'wf',
+      startedAt: 1000,
+      finishedAt: 2000,
+      status: 'ok',
+      input: {},
+      steps: [
+        {
+          kind: 'node',
+          name: 'AiAgentNode',
+          input: {},
+          output: {
+            output: 'hi',
+            usage: { promptTokens: 30, completionTokens: 9, totalTokens: 39 },
+          },
+          startedAt: 1000,
+          finishedAt: 2000,
+          status: 'ok',
+        },
+      ],
+    };
+
+    expect(formatTrace(enrichTrace(trace))).toBe(
+      'wf ✓ 1000ms · 39 tok\n  ai agent (1000ms · 39 tok)',
     );
   });
 

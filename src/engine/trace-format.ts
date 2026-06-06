@@ -1,9 +1,10 @@
-import type { Trace, TraceStep } from './trace';
+import type { Trace, TraceStep, TokenUsage } from './trace';
 
 interface FlowToken {
   label: string;
   ms: number;
   status: 'ok' | 'error';
+  tokens?: number; // totalTokens for this node, when it reported usage
 }
 
 /** "TelegramWebhookNode" → "telegram webhook", "get_services" → "get services". */
@@ -33,6 +34,32 @@ function extractToolSteps(output: unknown): RawToolStep[] | undefined {
   return ts as RawToolStep[];
 }
 
+function extractUsage(output: unknown): TokenUsage | undefined {
+  if (typeof output !== 'object' || output === null) return undefined;
+  const u = (output as { usage?: unknown }).usage;
+  if (typeof u !== 'object' || u === null) return undefined;
+  const { promptTokens, completionTokens, totalTokens } = u as Record<
+    string,
+    unknown
+  >;
+  if (
+    typeof promptTokens !== 'number' ||
+    typeof completionTokens !== 'number' ||
+    typeof totalTokens !== 'number'
+  ) {
+    return undefined;
+  }
+  return { promptTokens, completionTokens, totalTokens };
+}
+
+function stripUsage(output: unknown): unknown {
+  if (typeof output !== 'object' || output === null) return output;
+  if (!('usage' in output)) return output;
+  const rest = { ...(output as Record<string, unknown>) };
+  delete rest.usage;
+  return rest;
+}
+
 /**
  * Fold node-internal tool steps (exposed on a node's output as `toolSteps`)
  * into that step's `children`, recursing into sub-workflows. Produces the
@@ -44,11 +71,18 @@ export function enrichTrace(trace: Trace): Trace {
 
 function enrichStep(step: TraceStep): TraceStep {
   if (step.kind === 'subworkflow') {
-    return { ...step, trace: enrichTrace(step.trace) };
+    const trace = enrichTrace(step.trace);
+    return { ...step, trace, usage: sumTokens(trace) };
   }
   if (step.kind === 'tool') return step;
+  const usage = extractUsage(step.output);
   const tools = extractToolSteps(step.output);
-  if (!tools) return step;
+  // Lift usage off the output (and tools, if present) so they're not stored twice.
+  let output = step.output;
+  if (usage) output = stripUsage(output);
+  if (!tools) {
+    return usage ? { ...step, output, usage } : step;
+  }
   const children: TraceStep[] = tools.map((t) => ({
     kind: 'tool',
     name: t.name,
@@ -60,7 +94,10 @@ function enrichStep(step: TraceStep): TraceStep {
   }));
   // Drop the now-duplicated toolSteps from the node output — they live in
   // `children` after folding, no need to store them twice.
-  return { ...step, output: stripToolSteps(step.output), children };
+  output = stripToolSteps(output);
+  return usage
+    ? { ...step, output, children, usage }
+    : { ...step, output, children };
 }
 
 function stripToolSteps(output: unknown): unknown {
@@ -134,6 +171,29 @@ export function countSteps(trace: Trace): number {
   return n;
 }
 
+/** Per-workflow token total: sums node-step usage plus every sub-workflow's total. */
+export function sumTokens(trace: Trace): TokenUsage {
+  const total: TokenUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  };
+  for (const step of trace.steps) {
+    let u: TokenUsage | undefined;
+    if (step.kind === 'subworkflow') {
+      u = sumTokens(step.trace);
+    } else if (step.kind === 'node') {
+      u = step.usage ?? extractUsage(step.output);
+    }
+    if (u) {
+      total.promptTokens += u.promptTokens;
+      total.completionTokens += u.completionTokens;
+      total.totalTokens += u.totalTokens;
+    }
+  }
+  return total;
+}
+
 function collect(trace: Trace): FlowToken[] {
   const tokens: FlowToken[] = [];
   for (const step of trace.steps) {
@@ -145,6 +205,8 @@ function collect(trace: Trace): FlowToken[] {
       label: humanize(step.name),
       ms: step.finishedAt - step.startedAt,
       status: step.status,
+      tokens:
+        step.kind === 'node' && step.usage ? step.usage.totalTokens : undefined,
     });
     if (step.kind === 'node' && step.children) {
       for (const child of step.children) {
@@ -171,13 +233,16 @@ export function formatTrace(trace: Trace): string {
   const flow = collect(trace)
     .map((t) => {
       const mark = t.status === 'error' ? ' ✗' : '';
-      return `${t.label}${mark} (${t.ms}ms)`;
+      const tok = t.tokens ? ` · ${t.tokens} tok` : '';
+      return `${t.label}${mark} (${t.ms}ms${tok})`;
     })
     .join(' → ');
 
   const icon = trace.status === 'error' ? '✗' : '✓';
   const total = trace.finishedAt - trace.startedAt;
-  let out = `${trace.workflowName} ${icon} ${total}ms\n  ${flow}`;
+  const totalTokens = sumTokens(trace).totalTokens;
+  const tokSuffix = totalTokens > 0 ? ` · ${totalTokens} tok` : '';
+  let out = `${trace.workflowName} ${icon} ${total}ms${tokSuffix}\n  ${flow}`;
   if (trace.error) {
     out += `\n  └ ${trace.error.message}`;
   }
