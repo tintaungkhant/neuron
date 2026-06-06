@@ -32,17 +32,26 @@ const stepIndex = {};
 
 function esc(s){ return String(s).replace(/"/g, '&quot;').replace(/\\n/g, ' '); }
 
-function walk(step, id, parentId, lines){
-  stepIndex[id] = step;
-  const dur = (step.finishedAt && step.startedAt) ? (step.finishedAt - step.startedAt) : 0;
-  lines.push(id + '["' + esc(step.name + ' [' + step.kind + '] ' + dur + 'ms') + '"]');
-  if (parentId) lines.push(parentId + ' --> ' + id);
-  lines.push('class ' + id + ' ' + (step.status === 'error' ? 'err' : 'ok'));
-  lines.push('click ' + id + ' call showStep("' + id + '")');
-  let kids = [];
-  if (step.kind === 'node') kids = step.children || [];
-  else if (step.kind === 'subworkflow') kids = (step.trace && step.trace.steps) || [];
-  kids.forEach((k, i) => walk(k, id + '_' + i, id, lines));
+// Render steps as a sequential spine (prev --> current), matching real
+// execution order. A node's tool calls (or a sub-workflow's inner steps)
+// branch off that node and chain among themselves, while the main spine
+// continues from the node to its next sibling.
+function walkLevel(steps, parentId, prefix, lines){
+  let prev = parentId;
+  steps.forEach((step, i) => {
+    const id = prefix + i;
+    stepIndex[id] = step;
+    const dur = (step.finishedAt && step.startedAt) ? (step.finishedAt - step.startedAt) : 0;
+    lines.push(id + '["' + esc(step.name + ' [' + step.kind + '] ' + dur + 'ms') + '"]');
+    lines.push(prev + ' --> ' + id);
+    lines.push('class ' + id + ' ' + (step.status === 'error' ? 'err' : 'ok'));
+    lines.push('click ' + id + ' call showStep("' + id + '")');
+    let kids = [];
+    if (step.kind === 'node') kids = step.children || [];
+    else if (step.kind === 'subworkflow') kids = (step.trace && step.trace.steps) || [];
+    if (kids.length) walkLevel(kids, id, id + '_', lines);
+    prev = id;
+  });
 }
 
 window.showStep = (id) => {
@@ -64,14 +73,14 @@ async function loadRun(id){
   if (!rec){ chart.textContent = 'not found'; return; }
   for (const k in stepIndex) delete stepIndex[k];
   const t = rec.trace;
-  const lines = ['flowchart TD'];
+  const lines = ['flowchart LR'];
   lines.push('classDef ok fill:#dcfce7,stroke:#16a34a,color:#064e3b');
   lines.push('classDef err fill:#fee2e2,stroke:#dc2626,color:#7f1d1d');
   stepIndex['root'] = { name: t.workflowName, kind: 'workflow', status: t.status, input: t.input, output: t.output, error: t.error, startedAt: t.startedAt, finishedAt: t.finishedAt };
   lines.push('root["' + esc(t.workflowName) + '"]');
   lines.push('class root ' + (t.status === 'error' ? 'err' : 'ok'));
   lines.push('click root call showStep("root")');
-  (t.steps || []).forEach((s, i) => walk(s, 's' + i, 'root', lines));
+  walkLevel(t.steps || [], 'root', 's', lines);
   try {
     const { svg, bindFunctions } = await mermaid.render('g' + id, lines.join('\\n'));
     chart.innerHTML = svg;
