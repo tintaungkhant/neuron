@@ -10,7 +10,7 @@ import {
   type Trace,
 } from '../../engine';
 import type { TelegramWebhookPayload } from '../../engine/nodes/telegram/webhook.node';
-import { telegramWorkflow } from '../workflows/telegram-hi.workflow';
+import { telegramWorkflow } from '../workflows/telegram.workflow';
 import { appConfig } from '../config';
 import { TELEGRAM_QUEUE } from './queue.constants';
 

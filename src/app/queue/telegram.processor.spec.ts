@@ -1,6 +1,6 @@
 import { ExecutionStore, WorkflowEngine, WorkflowError } from '../../engine';
 import type { Trace } from '../../engine';
-import { telegramWorkflow } from '../workflows/telegram-hi.workflow';
+import { telegramWorkflow } from '../workflows/telegram.workflow';
 import { TelegramProcessor } from './telegram.processor';
 import type { TelegramWebhookPayload } from '../../engine/nodes/telegram/webhook.node';
 import type { Job } from 'bullmq';
