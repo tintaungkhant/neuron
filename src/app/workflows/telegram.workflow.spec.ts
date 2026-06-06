@@ -177,6 +177,18 @@ describe('telegramWorkflow', () => {
               ),
             );
           }
+          if (body.includes('Classify the customer')) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  choices: [
+                    { message: { role: 'assistant', content: 'discovery' } },
+                  ],
+                }),
+                { status: 200 },
+              ),
+            );
+          }
           // chunk call fails
           return Promise.resolve(new Response('boom', { status: 500 }));
         }
@@ -238,8 +250,10 @@ describe('telegramWorkflow', () => {
     await engine.run(telegramWorkflow, payload);
 
     const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
-    const orCall = calls.find(([u]) =>
-      urlOf(u).startsWith('https://openrouter.ai/'),
+    const orCall = calls.find(
+      ([u, i]) =>
+        urlOf(u).startsWith('https://openrouter.ai/') &&
+        (i.body as string).includes('Better Solutions'),
     );
     expect(orCall).toBeDefined();
     const body = JSON.parse(orCall![1].body as string) as {
@@ -459,8 +473,10 @@ describe('telegramWorkflow', () => {
     );
 
     // the agent received a labeled block + caption
-    const orCall = calls.find(([u]) =>
-      urlOf(u).startsWith('https://openrouter.ai/'),
+    const orCall = calls.find(
+      ([u, i]) =>
+        urlOf(u).startsWith('https://openrouter.ai/') &&
+        (i.body as string).includes('Better Solutions'),
     );
     const orBody = JSON.parse(orCall![1].body as string) as {
       messages: { role: string; content: string }[];
@@ -557,8 +573,10 @@ describe('telegramWorkflow', () => {
     await engine.run(telegramWorkflow, payload);
 
     const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
-    const orCall = calls.find(([u]) =>
-      urlOf(u).startsWith('https://openrouter.ai/'),
+    const orCall = calls.find(
+      ([u, i]) =>
+        urlOf(u).startsWith('https://openrouter.ai/') &&
+        (i.body as string).includes('Better Solutions'),
     );
     const orBody = JSON.parse(orCall![1].body as string) as {
       messages: { role: string; content: string }[];
@@ -666,8 +684,10 @@ describe('telegramWorkflow', () => {
     ]);
 
     const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
-    const orCall = calls.find(([u]) =>
-      urlOf(u).startsWith('https://openrouter.ai/'),
+    const orCall = calls.find(
+      ([u, i]) =>
+        urlOf(u).startsWith('https://openrouter.ai/') &&
+        (i.body as string).includes('Better Solutions'),
     );
     const orBody = JSON.parse(orCall![1].body as string) as {
       messages: { role: string; content: string }[];

@@ -72,7 +72,10 @@ describe('conversationWorkflow', () => {
     expect(PgChatMemory).toHaveBeenCalledWith({ sessionId: 'app:1' });
     expect(memory.load).toHaveBeenCalledWith();
     expect(memory.append).not.toHaveBeenCalled();
-    expect(trace.steps.map((s) => s.name)).toEqual(['AiAgentNode']);
+    expect(trace.steps.map((s) => s.name)).toEqual([
+      'ClassifyNode',
+      'AiAgentNode',
+    ]);
   });
 
   it('strips markdown from the reply', async () => {
@@ -92,10 +95,14 @@ describe('conversationWorkflow', () => {
       text: 'hi',
     });
     const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
-    const orCall = calls.find(([u]) =>
-      urlOf(u).startsWith('https://openrouter.ai/'),
-    );
-    const body = JSON.parse(orCall![1].body as string) as {
+    const agentCall = calls.find(([u, init]) => {
+      if (!urlOf(u).startsWith('https://openrouter.ai/')) return false;
+      const parsed = JSON.parse(init.body as string) as {
+        tools?: unknown[];
+      };
+      return Array.isArray(parsed.tools) && parsed.tools.length > 0;
+    });
+    const body = JSON.parse(agentCall![1].body as string) as {
       messages: { role: string; content: string }[];
       tools?: { function: { name: string } }[];
     };
