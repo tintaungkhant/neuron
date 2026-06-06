@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { WorkflowEngine } from './engine';
 import { AiAgentNode } from './nodes/ai/agent.node';
 import { ChunkMessageNode } from './nodes/ai/chunk-message.node';
+import { ClassifyNode } from './nodes/ai/classify.node';
 import { TelegramGetFileNode } from './nodes/telegram/get-file.node';
 import { GeminiUploadFileNode } from './nodes/gemini/upload-file.node';
 import { GeminiReadMediaNode } from './nodes/gemini/read-media.node';
@@ -13,6 +14,7 @@ import { DbShutdown } from './db/db-shutdown';
     WorkflowEngine,
     AiAgentNode,
     ChunkMessageNode,
+    ClassifyNode,
     TelegramGetFileNode,
     GeminiUploadFileNode,
     GeminiReadMediaNode,
@@ -23,6 +25,7 @@ import { DbShutdown } from './db/db-shutdown';
     WorkflowEngine,
     AiAgentNode,
     ChunkMessageNode,
+    ClassifyNode,
     TelegramGetFileNode,
     GeminiUploadFileNode,
     GeminiReadMediaNode,
