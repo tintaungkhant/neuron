@@ -51,6 +51,7 @@ Expected keys:
 - `TELEGRAM_BOT_TOKEN` — the app's Telegram bot token.
 - `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` — the conversational agent's OpenRouter credentials/model.
 - `GEMINI_API_KEY`, `GEMINI_MODEL` — native Gemini (Files API) credentials for reading images.
+- `DEV_UI_ENABLED` — set to `true` to mount the local dev executions UI at `/dev` (lists runs, renders each trace as a flowchart). Optional; defaults off. Leave unset in production — the trace contains system prompts and customer messages.
 
 The app's `src/app/config.ts` reads these keys (`requireEnv`) at import time into the `appConfig` singleton. `OpenRouterChatModel` never reads env — it takes `{ apiKey, model }` in its constructor, supplied from `appConfig`. `src/app/db/client.ts` reads `DATABASE_URL` directly for its own `pg` pool.
 

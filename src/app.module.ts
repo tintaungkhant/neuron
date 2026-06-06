@@ -8,6 +8,7 @@ import { AppDbShutdown } from './app/db/db-shutdown';
 import { TelegramProcessor } from './app/queue/telegram.processor';
 import { TELEGRAM_QUEUE } from './app/queue/queue.constants';
 import { appConfig } from './app/config';
+import { devUiImports } from './app/dev/dev.module';
 
 // Parse REDIS_URL into BullMQ connection options. We pass plain options (not an
 // ioredis instance) so the type matches BullMQ's own bundled ioredis version.
@@ -29,6 +30,7 @@ function redisConnection(url: string) {
     EngineModule,
     BullModule.forRoot({ connection: redisConnection(appConfig.redisUrl) }),
     BullModule.registerQueue({ name: TELEGRAM_QUEUE }),
+    ...devUiImports(appConfig.devUiEnabled),
   ],
   controllers: [TelegramController],
   providers: [
