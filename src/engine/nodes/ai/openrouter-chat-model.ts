@@ -6,6 +6,7 @@ import type {
   ToolCall,
 } from '../../ai/chat-model';
 import type { ToolSpec } from '../../ai/tool';
+import type { TokenUsage } from '../../trace';
 import { fetchWithTimeout } from '../../http';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -70,6 +71,21 @@ function parseToolArguments(
   }
 }
 
+interface OpenAiUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
+function fromOpenAiUsage(u: OpenAiUsage | undefined): TokenUsage | undefined {
+  if (!u) return undefined;
+  return {
+    promptTokens: u.prompt_tokens ?? 0,
+    completionTokens: u.completion_tokens ?? 0,
+    totalTokens: u.total_tokens ?? 0,
+  };
+}
+
 function toOpenAiTool(spec: ToolSpec) {
   return {
     type: 'function' as const,
@@ -109,11 +125,15 @@ export class OpenRouterChatModel implements ChatModel {
 
     const json = (await res.json()) as {
       choices?: { message?: OpenAiMessage }[];
+      usage?: OpenAiUsage;
     };
     const message = json.choices?.[0]?.message;
     if (!message) {
       throw new Error('OpenRouter: no message in response');
     }
-    return { message: fromOpenAiMessage(message) };
+    return {
+      message: fromOpenAiMessage(message),
+      usage: fromOpenAiUsage(json.usage),
+    };
   }
 }

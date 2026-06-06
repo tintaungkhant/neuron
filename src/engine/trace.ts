@@ -1,3 +1,9 @@
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 export type SerializedError = { message: string; stack?: string };
 
 export type TraceStep =

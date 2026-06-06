@@ -16,10 +16,10 @@ describe('OpenRouterChatModel', () => {
     return new OpenRouterChatModel({ apiKey: 'test-key', model: modelName });
   }
 
-  function okResponse(message: unknown): Response {
-    return new Response(JSON.stringify({ choices: [{ message }] }), {
-      status: 200,
-    });
+  function okResponse(message: unknown, usage?: unknown): Response {
+    const body: Record<string, unknown> = { choices: [{ message }] };
+    if (usage !== undefined) body.usage = usage;
+    return new Response(JSON.stringify(body), { status: 200 });
   }
 
   interface OpenAiRequestBody {
@@ -111,6 +111,31 @@ describe('OpenRouterChatModel', () => {
       content: '',
       toolCalls: [{ id: 'call-9', name: 'get_time', arguments: { tz: 'UTC' } }],
     });
+  });
+
+  it('parses token usage from the response', async () => {
+    fetchSpy.mockResolvedValue(
+      okResponse(
+        { role: 'assistant', content: 'hi' },
+        { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+      ),
+    );
+
+    const out = await model().complete({ messages: [] });
+
+    expect(out.usage).toEqual({
+      promptTokens: 12,
+      completionTokens: 3,
+      totalTokens: 15,
+    });
+  });
+
+  it('leaves usage undefined when the response omits it', async () => {
+    fetchSpy.mockResolvedValue(okResponse({ role: 'assistant', content: 'hi' }));
+
+    const out = await model().complete({ messages: [] });
+
+    expect(out.usage).toBeUndefined();
   });
 
   it('throws when OpenRouter returns a non-OK status', async () => {
