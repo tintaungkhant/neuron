@@ -17,6 +17,7 @@ export type TraceStep =
       status: 'ok' | 'error';
       error?: SerializedError;
       children?: TraceStep[]; // nested steps run inside this node (e.g. agent tool calls)
+      usage?: TokenUsage; // token usage lifted off the node output (LLM nodes only)
     }
   | {
       kind: 'tool';
@@ -38,6 +39,7 @@ export type TraceStep =
       status: 'ok' | 'error';
       error?: SerializedError;
       trace: Trace;
+      usage?: TokenUsage; // summed token usage of the child workflow
     };
 
 export type Trace = {
