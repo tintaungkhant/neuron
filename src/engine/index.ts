@@ -19,6 +19,11 @@ export type { Trace, TraceStep, SerializedError } from './trace';
 
 export { AiAgentNode } from './nodes/ai/agent.node';
 export type { AiAgentInput, AiAgentOutput } from './nodes/ai/agent.node';
+export { ChunkMessageNode } from './nodes/ai/chunk-message.node';
+export type {
+  ChunkMessageInput,
+  ChunkMessageOutput,
+} from './nodes/ai/chunk-message.node';
 export { OpenRouterChatModel } from './nodes/ai/openrouter-chat-model';
 export type { OpenRouterChatModelOptions } from './nodes/ai/openrouter-chat-model';
 export { PgChatMemory } from './nodes/ai/pg-chat-memory';
