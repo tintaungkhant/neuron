@@ -15,6 +15,13 @@
       "when": 1780666589592,
       "tag": "0001_nifty_post",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780719362095,
+      "tag": "0002_salty_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }

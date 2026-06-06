@@ -33,6 +33,9 @@ export const executions = pgTable(
     finishedAt: timestamp('finished_at', { withTimezone: true }).notNull(),
     durationMs: integer('duration_ms').notNull(),
     stepCount: integer('step_count').notNull(), // recursive: nodes + tool children + sub-workflow steps
+    tokensPrompt: integer('tokens_prompt').notNull().default(0),
+    tokensCompletion: integer('tokens_completion').notNull().default(0),
+    tokensTotal: integer('tokens_total').notNull().default(0),
     trace: jsonb('trace').notNull().$type<Trace>(), // full enriched trace, with node/tool in & out
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
