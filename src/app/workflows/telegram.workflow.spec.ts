@@ -13,7 +13,7 @@ import { appDb } from '../db/client';
 import { TelegramWebhookNode } from '../../engine/nodes/telegram/webhook.node';
 import type { TelegramWebhookPayload } from '../../engine/nodes/telegram/webhook.node';
 import { TelegramSendMessageNode } from '../../engine/nodes/telegram/send-message.node';
-import { telegramWorkflow } from './telegram-hi.workflow';
+import { telegramWorkflow } from './telegram.workflow';
 
 const mockAppDb = appDb as unknown as {
   select: jest.Mock;
