@@ -22,11 +22,15 @@ export class ChunkMessageNode extends Node<
   async execute(input: ChunkMessageInput): Promise<ChunkMessageOutput> {
     const maxChars = input.maxChars ?? DEFAULT_MAX_CHARS;
     const prompt =
-      `Split the following chat message into multiple shorter messages at ` +
-      `natural topic boundaries. Preserve ALL content exactly — do not reword, ` +
-      `summarise, add, or drop anything; only split. Each message must be at ` +
-      `most ${maxChars} characters. Return ONLY a JSON array of strings, ` +
-      `nothing else.\n\n${input.text}`;
+      `Split the following chat message into a SMALL number of shorter messages ` +
+      `— aim for 2 to 4, and never one message per sentence. Break ONLY at major ` +
+      `topic shifts (e.g. intro, then details, then closing). Group related ` +
+      `sentences together, and keep any numbered or bulleted list whole inside a ` +
+      `single message — do not split a list across messages or put each item in ` +
+      `its own message. If the text covers just one topic, return it as a single ` +
+      `message. Preserve ALL content exactly — do not reword, summarise, add, or ` +
+      `drop anything; only split. Each message must be at most ${maxChars} ` +
+      `characters. Return ONLY a JSON array of strings, nothing else.\n\n${input.text}`;
 
     const res = await input.chatModel.complete({
       messages: [{ role: 'user', content: prompt }],
