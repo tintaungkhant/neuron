@@ -61,6 +61,13 @@ function toolCall(
   return { message: { role: 'assistant', content: '', toolCalls: calls } };
 }
 
+function withUsage(
+  result: ChatCompletionResult,
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number },
+): ChatCompletionResult {
+  return { ...result, usage };
+}
+
 describe('AiAgentNode — core', () => {
   it('returns the assistant answer for a plain completion', async () => {
     const model = new FakeChatModel([assistant('hello there')]);
@@ -343,5 +350,45 @@ describe('AiAgentNode — tools', () => {
     ];
     expect(out.messages).toEqual(cleanTurn);
     expect(memory.appended).toEqual([]); // agent never persists
+  });
+});
+
+describe('AiAgentNode — token usage', () => {
+  it('sums usage across every model call in the turn', async () => {
+    const weather = new FakeTool('get_weather', { tempC: 21 });
+    const model = new FakeChatModel([
+      withUsage(
+        toolCall({ id: 'c1', name: 'get_weather', arguments: { city: 'YGN' } }),
+        { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      ),
+      withUsage(assistant('21C'), {
+        promptTokens: 20,
+        completionTokens: 4,
+        totalTokens: 24,
+      }),
+    ]);
+
+    const out = await new AiAgentNode().execute({
+      input: 'weather?',
+      chatModel: model,
+      tools: [weather],
+    });
+
+    expect(out.usage).toEqual({
+      promptTokens: 30,
+      completionTokens: 9,
+      totalTokens: 39,
+    });
+  });
+
+  it('omits usage when no model call reported any', async () => {
+    const model = new FakeChatModel([assistant('hi')]);
+
+    const out = await new AiAgentNode().execute({
+      input: 'hi',
+      chatModel: model,
+    });
+
+    expect(out.usage).toBeUndefined();
   });
 });
