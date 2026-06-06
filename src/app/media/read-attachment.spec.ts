@@ -56,14 +56,20 @@ describe('readAttachment', () => {
 
     expect(text).toBe('a bank slip');
     expect(run).toHaveBeenCalledTimes(2);
-    const uploadArg = run.mock.calls[0][1] as Record<string, unknown>;
+    const uploadArg = (run.mock.calls[0] as unknown[])[1] as Record<
+      string,
+      unknown
+    >;
     expect(uploadArg).toMatchObject({
       apiKey: 'KEY',
       url: 'https://tg/file',
       mimeType: 'image/jpeg',
       fileSize: 1234,
     });
-    const readArg = run.mock.calls[1][1] as Record<string, unknown>;
+    const readArg = (run.mock.calls[1] as unknown[])[1] as Record<
+      string,
+      unknown
+    >;
     expect(readArg).toMatchObject({
       apiKey: 'KEY',
       model: 'gemini-x',
@@ -88,13 +94,19 @@ describe('readAttachment', () => {
       geminiModel: 'm',
     });
 
-    const uploadArg = run.mock.calls[0][1] as Record<string, unknown>;
+    const uploadArg = (run.mock.calls[0] as unknown[])[1] as Record<
+      string,
+      unknown
+    >;
     expect(uploadArg).toMatchObject({
       uploadTimeoutMs: 300_000,
       pollIntervalMs: 2_000,
       maxPollAttempts: 60,
     });
-    const readArg = run.mock.calls[1][1] as Record<string, unknown>;
+    const readArg = (run.mock.calls[1] as unknown[])[1] as Record<
+      string,
+      unknown
+    >;
     expect(readArg).toMatchObject({ timeoutMs: 120_000 });
   });
 });
