@@ -54,6 +54,36 @@ describe('GeminiReadMediaNode', () => {
     expect(out).toEqual({ text: 'a bank slip' });
   });
 
+  it('parses usageMetadata into usage', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'slip' }] } }],
+          usageMetadata: {
+            promptTokenCount: 258,
+            candidatesTokenCount: 12,
+            totalTokenCount: 270,
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    const node = new GeminiReadMediaNode();
+    const out = await node.execute({
+      apiKey: 'K',
+      model: 'm',
+      fileUri: 'u',
+      mimeType: 'image/jpeg',
+      prompt: 'p',
+    });
+
+    expect(out.usage).toEqual({
+      promptTokens: 258,
+      completionTokens: 12,
+      totalTokens: 270,
+    });
+  });
+
   it('throws when generateContent returns non-2xx', async () => {
     fetchSpy.mockResolvedValue(new Response('bad', { status: 400 }));
     const node = new GeminiReadMediaNode();

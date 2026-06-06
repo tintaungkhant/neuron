@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Node } from '../../node';
 import { GEMINI_BASE, geminiError } from './gemini-http';
 import { fetchWithTimeout } from '../../http';
+import type { TokenUsage } from '../../trace';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -16,10 +17,27 @@ export interface GeminiReadMediaInput {
 
 export interface GeminiReadMediaOutput {
   text: string;
+  usage?: TokenUsage; // token counts from Gemini usageMetadata, when present
 }
 
 interface GenerateContentResponse {
   candidates?: { content?: { parts?: { text?: string }[] } }[];
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
+}
+
+function toUsage(
+  m: GenerateContentResponse['usageMetadata'],
+): TokenUsage | undefined {
+  if (!m) return undefined;
+  return {
+    promptTokens: m.promptTokenCount ?? 0,
+    completionTokens: m.candidatesTokenCount ?? 0,
+    totalTokens: m.totalTokenCount ?? 0,
+  };
 }
 
 @Injectable()
@@ -64,6 +82,6 @@ export class GeminiReadMediaNode extends Node<
     if (!text) {
       throw new Error('Gemini returned no text');
     }
-    return { text };
+    return { text, usage: toUsage(json.usageMetadata) };
   }
 }
