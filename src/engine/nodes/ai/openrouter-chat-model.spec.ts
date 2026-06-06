@@ -131,7 +131,9 @@ describe('OpenRouterChatModel', () => {
   });
 
   it('leaves usage undefined when the response omits it', async () => {
-    fetchSpy.mockResolvedValue(okResponse({ role: 'assistant', content: 'hi' }));
+    fetchSpy.mockResolvedValue(
+      okResponse({ role: 'assistant', content: 'hi' }),
+    );
 
     const out = await model().complete({ messages: [] });
 

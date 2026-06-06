@@ -206,9 +206,7 @@ function collect(trace: Trace): FlowToken[] {
       ms: step.finishedAt - step.startedAt,
       status: step.status,
       tokens:
-        step.kind === 'node' && step.usage
-          ? step.usage.totalTokens
-          : undefined,
+        step.kind === 'node' && step.usage ? step.usage.totalTokens : undefined,
     });
     if (step.kind === 'node' && step.children) {
       for (const child of step.children) {

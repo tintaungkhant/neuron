@@ -63,7 +63,11 @@ function toolCall(
 
 function withUsage(
   result: ChatCompletionResult,
-  usage: { promptTokens: number; completionTokens: number; totalTokens: number },
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  },
 ): ChatCompletionResult {
   return { ...result, usage };
 }
