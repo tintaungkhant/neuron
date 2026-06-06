@@ -12,7 +12,9 @@ export class TelegramController {
   @HttpCode(200)
   async webhook(@Body() update: TelegramWebhookPayload): Promise<{ ok: true }> {
     await this.queue.add(PROCESS_UPDATE_JOB, update, {
-      jobId: update?.update_id != null ? String(update.update_id) : undefined,
+      // BullMQ rejects purely-numeric job ids ("Custom Ids cannot be integers"),
+      // so prefix the Telegram update_id.
+      jobId: update?.update_id != null ? `tg-${update.update_id}` : undefined,
       attempts: 1,
       removeOnComplete: { count: 1000 },
       removeOnFail: { count: 5000 },

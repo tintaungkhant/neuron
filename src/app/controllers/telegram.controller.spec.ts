@@ -51,7 +51,7 @@ describe('TelegramController', () => {
     ];
     expect(name).toBe(PROCESS_UPDATE_JOB);
     expect(data).toEqual(update);
-    expect(opts.jobId).toBe('42');
+    expect(opts.jobId).toBe('tg-42');
     expect(opts.attempts).toBe(1);
   });
 
