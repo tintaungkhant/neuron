@@ -1,52 +1,22 @@
-import { Body, Controller, HttpCode, Logger, Post } from '@nestjs/common';
-import {
-  WorkflowEngine,
-  WorkflowError,
-  ExecutionStore,
-  enrichTrace,
-  formatTrace,
-  type Trace,
-} from '../../engine';
+import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import type { TelegramWebhookPayload } from '../../engine/nodes/telegram/webhook.node';
-import { telegramWorkflow } from '../workflows/telegram-hi.workflow';
+import { TELEGRAM_QUEUE, PROCESS_UPDATE_JOB } from '../queue/queue.constants';
 
 @Controller('api/demo/telegram')
 export class TelegramController {
-  private readonly logger = new Logger(TelegramController.name);
-
-  constructor(
-    private readonly engine: WorkflowEngine,
-    private readonly executions: ExecutionStore,
-  ) {}
+  constructor(@InjectQueue(TELEGRAM_QUEUE) private readonly queue: Queue) {}
 
   @Post('webhook')
   @HttpCode(200)
   async webhook(@Body() update: TelegramWebhookPayload): Promise<{ ok: true }> {
-    try {
-      const { trace } = await this.engine.run(telegramWorkflow, update);
-      await this.record(trace);
-    } catch (e) {
-      // WorkflowError carries the partial trace — record the flow up to the break.
-      if (e instanceof WorkflowError) {
-        await this.record(e.trace);
-      } else {
-        this.logger.error('workflow failed', e instanceof Error ? e.stack : e);
-      }
-    }
+    await this.queue.add(PROCESS_UPDATE_JOB, update, {
+      jobId: update?.update_id != null ? String(update.update_id) : undefined,
+      attempts: 1,
+      removeOnComplete: { count: 1000 },
+      removeOnFail: { count: 5000 },
+    });
     return { ok: true };
-  }
-
-  private async record(trace: Trace): Promise<void> {
-    this.logger.log('\n' + formatTrace(enrichTrace(trace)));
-    try {
-      const id = await this.executions.save(trace);
-      this.logger.log(`execution #${id} saved`);
-    } catch (e) {
-      // Persistence must never break the webhook response.
-      this.logger.error(
-        'failed to save execution',
-        e instanceof Error ? e.stack : e,
-      );
-    }
   }
 }

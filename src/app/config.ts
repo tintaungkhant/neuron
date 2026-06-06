@@ -5,6 +5,8 @@ export type AppConfig = {
   openRouterModel: string;
   geminiApiKey: string;
   geminiModel: string;
+  redisUrl: string;
+  queueConcurrency: number;
 };
 
 function requireEnv(name: string): string {
@@ -20,4 +22,6 @@ export const appConfig: AppConfig = {
   openRouterModel: requireEnv('OPENROUTER_MODEL'),
   geminiApiKey: requireEnv('GEMINI_API_KEY'),
   geminiModel: requireEnv('GEMINI_MODEL'),
+  redisUrl: requireEnv('REDIS_URL'),
+  queueConcurrency: Number(process.env.QUEUE_CONCURRENCY) || 5,
 };

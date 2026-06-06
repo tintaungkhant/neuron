@@ -25,9 +25,11 @@
     "db:app:seed": "ts-node -P tsconfig.json src/app/db/seed.ts"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "bullmq": "^5.78.0",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.21.0",
     "reflect-metadata": "^0.2.2",
