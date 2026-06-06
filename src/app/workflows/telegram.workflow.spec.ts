@@ -116,6 +116,93 @@ describe('telegramWorkflow', () => {
     });
   });
 
+  it('chunks a long reply and sends each piece in order', async () => {
+    const longReply = 'x'.repeat(600); // > CHUNK_THRESHOLD (500)
+    fetchSpy.mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = urlOf(input);
+        if (url.startsWith('https://openrouter.ai/')) {
+          const body = (init?.body as string) ?? '';
+          const content = body.includes('Better Solutions')
+            ? longReply // the agent turn
+            : '["part one","part two"]'; // the chunk turn
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                choices: [{ message: { role: 'assistant', content } }],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+        return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
+      },
+    );
+
+    const payload: TelegramWebhookPayload = {
+      update_id: 1,
+      message: {
+        message_id: 5,
+        chat: { id: 99, type: 'private' },
+        date: 1700000000,
+        text: 'tell me everything',
+      },
+    };
+
+    await engine.run(telegramWorkflow, payload);
+
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
+    const tgTexts = calls
+      .filter(([u]) => urlOf(u).includes('api.telegram.org'))
+      .map(([, i]) => (JSON.parse(i.body as string) as { text: string }).text);
+    expect(tgTexts).toEqual(['part one', 'part two']);
+  });
+
+  it('sends the whole reply when the chunk call fails', async () => {
+    const longReply = 'y'.repeat(600);
+    fetchSpy.mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = urlOf(input);
+        if (url.startsWith('https://openrouter.ai/')) {
+          const body = (init?.body as string) ?? '';
+          if (body.includes('Better Solutions')) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  choices: [
+                    { message: { role: 'assistant', content: longReply } },
+                  ],
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+          // chunk call fails
+          return Promise.resolve(new Response('boom', { status: 500 }));
+        }
+        return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
+      },
+    );
+
+    const payload: TelegramWebhookPayload = {
+      update_id: 1,
+      message: {
+        message_id: 5,
+        chat: { id: 99, type: 'private' },
+        date: 1700000000,
+        text: 'tell me everything',
+      },
+    };
+
+    await engine.run(telegramWorkflow, payload);
+
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit][];
+    const tgTexts = calls
+      .filter(([u]) => urlOf(u).includes('api.telegram.org'))
+      .map(([, i]) => (JSON.parse(i.body as string) as { text: string }).text);
+    expect(tgTexts).toEqual([longReply]); // single whole-reply send
+  });
+
   it('uses a project-namespaced sessionId for memory', async () => {
     const payload: TelegramWebhookPayload = {
       update_id: 1,

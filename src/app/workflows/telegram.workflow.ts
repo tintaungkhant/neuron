@@ -1,4 +1,9 @@
-import { PgChatMemory, type WorkflowFn } from '../../engine';
+import {
+  ChunkMessageNode,
+  OpenRouterChatModel,
+  PgChatMemory,
+  type WorkflowFn,
+} from '../../engine';
 import {
   TelegramWebhookNode,
   type TelegramWebhookPayload,
@@ -19,6 +24,8 @@ const SORRY_MESSAGE =
 // Sent when the attachment is a kind we don't read (animation, document, sticker).
 const UNSUPPORTED_MESSAGE =
   'ဒီ file အမျိုးအစားကို လောလောဆယ် ဖတ်လို့မရသေးပါဘူးရှင် 🙏 စာသား (သို့) ပုံ၊ အသံ၊ ဗီဒီယို နဲ့ ပြန်ပို့ပေးပါနော်။';
+
+const CHUNK_THRESHOLD = 500; // replies longer than this get AI-chunked
 
 export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
   async function telegramWorkflow(payload, wf) {
@@ -82,11 +89,32 @@ export const telegramWorkflow: WorkflowFn<TelegramWebhookPayload, void> =
         text: agentText,
       });
 
-      await wf.run(TelegramSendMessageNode, {
-        botToken: appConfig.telegramBotToken,
-        chatId: parsed.chat.id,
-        text: result.reply,
-      });
+      // Long replies are split into several natural chat messages by an LLM
+      // chunk node. If that call fails, fall back to sending the whole reply.
+      let chunks = [result.reply];
+      if (result.reply.length > CHUNK_THRESHOLD) {
+        try {
+          const chunked = await wf.run(ChunkMessageNode, {
+            text: result.reply,
+            chatModel: new OpenRouterChatModel({
+              apiKey: appConfig.openRouterApiKey,
+              model: appConfig.openRouterModel,
+            }),
+            maxChars: 4096,
+          });
+          if (chunked.chunks.length) chunks = chunked.chunks;
+        } catch {
+          // fallback: send the whole reply as one message
+        }
+      }
+
+      for (const chunk of chunks) {
+        await wf.run(TelegramSendMessageNode, {
+          botToken: appConfig.telegramBotToken,
+          chatId: parsed.chat.id,
+          text: chunk,
+        });
+      }
 
       // Commit the turn to memory ONLY after the reply was delivered, so a
       // failed send never poisons history with a message the user didn't see.
