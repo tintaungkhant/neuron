@@ -101,7 +101,7 @@ describe('telegramWorkflow', () => {
     expect(trace.status).toBe('ok');
     expect(trace.steps.map((s) => s.name)).toEqual([
       'TelegramWebhookNode',
-      'AiAgentNode',
+      'conversationWorkflow',
       'TelegramSendMessageNode',
     ]);
 
@@ -342,7 +342,7 @@ describe('telegramWorkflow', () => {
       'TelegramGetFileNode',
       'GeminiUploadFileNode',
       'GeminiReadMediaNode',
-      'AiAgentNode',
+      'conversationWorkflow',
       'TelegramSendMessageNode',
     ]);
 
@@ -574,7 +574,7 @@ describe('telegramWorkflow', () => {
       'TelegramGetFileNode',
       'GeminiUploadFileNode',
       'GeminiReadMediaNode',
-      'AiAgentNode',
+      'conversationWorkflow',
       'TelegramSendMessageNode',
     ]);
 
