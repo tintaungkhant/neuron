@@ -24,6 +24,12 @@ export type {
   ChunkMessageInput,
   ChunkMessageOutput,
 } from './nodes/ai/chunk-message.node';
+export { ClassifyNode } from './nodes/ai/classify.node';
+export type {
+  ClassifyInput,
+  ClassifyOutput,
+  ClassifyOption,
+} from './nodes/ai/classify.node';
 export { OpenRouterChatModel } from './nodes/ai/openrouter-chat-model';
 export type { OpenRouterChatModelOptions } from './nodes/ai/openrouter-chat-model';
 export { PgChatMemory } from './nodes/ai/pg-chat-memory';
