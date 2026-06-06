@@ -41,6 +41,7 @@ function kidsOf(step){
 function card(id, step){
   const ok = step.status !== 'error';
   const el = document.createElement('div');
+  el.id = 'card-' + id;
   el.className = 'cursor-pointer select-none rounded-xl border bg-white px-3 py-2 shadow-sm transition hover:shadow-md min-w-[150px] max-w-[230px] ' +
     (ok ? 'border-emerald-300' : 'border-red-300 bg-red-50');
   el.innerHTML =
@@ -68,25 +69,27 @@ function downArrow(){
   return d;
 }
 
-// Top level: a horizontal spine. Each cell = a card plus, if it has children,
-// a vertical branch underneath.
-function renderSpine(steps, container, prefix){
-  steps.forEach((step, i) => {
-    const id = prefix + i;
-    stepIndex[id] = step;
-    if (i > 0) container.appendChild(arrow());
-    const cell = document.createElement('div');
-    cell.className = 'flex flex-col gap-2';
-    cell.appendChild(card(id, step));
-    const kids = kidsOf(step);
-    if (kids.length){
-      const sub = document.createElement('div');
-      sub.className = 'ml-3 border-l-2 border-slate-200 pl-3 flex flex-col gap-1';
-      renderBranch(kids, sub, id + '_');
-      cell.appendChild(sub);
-    }
-    container.appendChild(cell);
-  });
+// One spine cell: the card and its to-next arrow sit in a top row (so all
+// arrows align to the card line regardless of how tall the branch below is);
+// the node's tool calls / sub-workflow steps drop into a vertical branch under
+// the card.
+function makeCell(id, step, isLast){
+  stepIndex[id] = step;
+  const cell = document.createElement('div');
+  cell.className = 'flex flex-col gap-2';
+  const top = document.createElement('div');
+  top.className = 'flex flex-row items-center gap-1';
+  top.appendChild(card(id, step));
+  if (!isLast) top.appendChild(arrow());
+  cell.appendChild(top);
+  const kids = kidsOf(step);
+  if (kids.length){
+    const sub = document.createElement('div');
+    sub.className = 'ml-3 border-l-2 border-slate-200 pl-3 flex flex-col gap-1';
+    renderBranch(kids, sub, id + '_');
+    cell.appendChild(sub);
+  }
+  return cell;
 }
 
 // Branch (tool calls / sub-workflow steps): stacked vertically in run order.
@@ -134,12 +137,13 @@ async function loadRun(id){
   stepIndex['root'] = { name: t.workflowName, kind: 'workflow', status: t.status, input: t.input, output: t.output, error: t.error, startedAt: t.startedAt, finishedAt: t.finishedAt };
   const spine = document.createElement('div');
   spine.className = 'flex flex-row items-start gap-1 w-max';
-  const rootCard = card('root', stepIndex['root']);
-  spine.appendChild(rootCard);
-  if ((t.steps || []).length) spine.appendChild(arrow());
-  renderSpine(t.steps || [], spine, 's');
+  const all = [{ id: 'root', step: stepIndex['root'] }];
+  (t.steps || []).forEach((s, i) => all.push({ id: 's' + i, step: s }));
+  all.forEach((e, idx) => {
+    spine.appendChild(makeCell(e.id, e.step, idx === all.length - 1));
+  });
   chart.appendChild(spine);
-  selectStep('root', rootCard);
+  selectStep('root', document.getElementById('card-root'));
 }
 
 async function loadList(){
